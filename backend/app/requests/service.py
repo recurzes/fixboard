@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.intake.form_config import Category
 from app.intake.models import Property, Unit
 from app.requests.models import (
     REFERENCE_SEQUENCE,
@@ -39,7 +40,9 @@ def _find_by_key(db: Session, idempotency_key: str) -> MaintenanceRequest | None
     return db.scalar(query)
 
 
-def create_request(db: Session, data: RequestCreate, idempotency_key: str) -> MaintenanceRequest:
+def create_request(
+    db: Session, data: RequestCreate, idempotency_key: str, category: Category
+) -> MaintenanceRequest:
     # First, so a retry returns its original even once the unit is at its limit.
     original = _find_by_key(db, idempotency_key)
     if original is not None:
@@ -69,6 +72,11 @@ def create_request(db: Session, data: RequestCreate, idempotency_key: str) -> Ma
 
     residents = db.scalars(select(Resident).where(Resident.unit_id == unit.id))
     matched = contact_matches(data.email, data.phone, residents)
+    # Both come from the answers and the config, so the client cannot set or clear them.
+    chosen = category.chosen_options(data.followup_answers)
+    # shortcut: keeps the first if answers to two questions both have one, which no category does
+    # yet. Add a list column if one ever does.
+    self_check = next((option.self_check for option in chosen if option.self_check), None)
     request = MaintenanceRequest(
         reference_number=next_reference(db),
         unit_id=unit.id,
@@ -78,11 +86,16 @@ def create_request(db: Session, data: RequestCreate, idempotency_key: str) -> Ma
         email=data.email,
         category=data.category,
         description=data.description,
+        followup_answers=data.followup_answers,
         entry_permission=data.entry_permission,
         entry_notes=data.entry_notes,
         source=RequestSource.tenant_form,
         contact_matched=matched,
         needs_review=not matched,
+        urgent=any(option.urgent for option in chosen),
+        self_check_shown=self_check.id if self_check else None,
+        self_check_tried=self_check is not None and data.self_check_tried,
+        emergency_ack_at=func.now() if data.not_an_emergency else None,
         idempotency_key=idempotency_key,
     )
     db.add(request)

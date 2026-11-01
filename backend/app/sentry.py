@@ -7,6 +7,7 @@ _SENSITIVE_KEY_PARTS = (
     "phone",
     "email",
     "description",
+    "followup_answers",
     "tenant_name",
     "token",
     "authorization",

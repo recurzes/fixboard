@@ -91,9 +91,18 @@ def submit_request(
     if data.website:
         return RequestCreated(reference_number=next_reference(db))
 
-    categories = {category.id for category in request.app.state.form_config.categories}
-    if data.category not in categories:
-        raise RequestValidationError([{"loc": ("body", "category"), "msg": "Unknown category"}])
+    config = request.app.state.form_config
+    errors = []
+    # Checked here, not in the service, because staff-logged requests skip it (T65).
+    if config.require_emergency_ack and not data.not_an_emergency:
+        errors.append({"loc": ("body", "not_an_emergency"), "msg": "Please confirm this box"})
+    category = next((c for c in config.categories if c.id == data.category), None)
+    if category is None:
+        errors.append({"loc": ("body", "category"), "msg": "Unknown category"})
+    else:
+        errors += category.answer_errors(data.followup_answers)
+    if errors:
+        raise RequestValidationError(errors)
 
-    created = create_request(db, data, idempotency_key)
+    created = create_request(db, data, idempotency_key, category)
     return RequestCreated(reference_number=created.reference_number)
