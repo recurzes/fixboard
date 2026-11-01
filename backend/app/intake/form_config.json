@@ -1,0 +1,11 @@
+{
+  "categories": [
+    { "id": "ac_heating", "label": "AC/heating" },
+    { "id": "plumbing", "label": "Plumbing" },
+    { "id": "electrical", "label": "Electrical" },
+    { "id": "pest", "label": "Pest" },
+    { "id": "appliance", "label": "Appliance" },
+    { "id": "door_lock", "label": "Door/lock" },
+    { "id": "other", "label": "Other" }
+  ]
+}
