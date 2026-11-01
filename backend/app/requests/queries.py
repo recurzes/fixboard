@@ -11,7 +11,8 @@ from app.assignees.models import Assignee
 from app.db import MAX_ID
 from app.intake.models import Property, Unit
 from app.photos.models import Photo
-from app.requests.models import MaintenanceRequest, RequestStatus
+from app.requests.models import MaintenanceRequest, Note, RequestStatus
+from app.staff.models import StaffUser
 
 PAGE_SIZE = 25
 
@@ -127,8 +128,17 @@ def get_request_detail(db: Session, request_id: int) -> dict | None:
     if row is None:
         return None
     photos = select(Photo.id).where(Photo.request_id == request_id).order_by(Photo.id)
-    # Empty until T64 adds the notes table.
-    return {**row._mapping, "photo_ids": db.scalars(photos).all(), "notes": []}
+    notes = (
+        select(Note.id, Note.body, StaffUser.name.label("author_name"), Note.created_at)
+        .join(StaffUser, Note.author_id == StaffUser.id)
+        .where(Note.request_id == request_id)
+        .order_by(Note.id)
+    )
+    return {
+        **row._mapping,
+        "photo_ids": db.scalars(photos).all(),
+        "notes": db.execute(notes).all(),
+    }
 
 
 def get_photo(db: Session, request_id: int, photo_id: int) -> Photo | None:
