@@ -1,3 +1,7 @@
+import app.assignees.models  # noqa: F401
+import app.intake.models  # noqa: F401
+import app.residents.models  # noqa: F401
+import app.staff.models  # noqa: F401
 from alembic import context
 from app.db import Base, engine
 from app.log import configure_logging
