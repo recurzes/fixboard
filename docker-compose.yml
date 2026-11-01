@@ -19,7 +19,7 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://fixboard:fixboard@db:5432/fixboard
-      SUPABASE_URL: ${SUPABASE_URL:-}
+      NEON_AUTH_URL: ${NEON_AUTH_URL:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - "127.0.0.1:8000:8000"
