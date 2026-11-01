@@ -1,10 +1,11 @@
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db import MAX_ID
 from app.phone import normalize_phone
-from app.requests.models import EntryPermission
+from app.requests.models import EntryPermission, RequestSource, RequestStatus
 
 _EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
@@ -62,3 +63,55 @@ class RequestCreate(BaseModel):
 
 class RequestCreated(BaseModel):
     reference_number: str
+
+
+class RequestRow(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    reference_number: str
+    property_id: int
+    property_name: str
+    unit_id: int
+    unit_label: str
+    tenant_name: str
+    category: str
+    status: RequestStatus  # "new" is what the dashboard highlights
+    urgent: bool
+    needs_review: bool
+    assignee_id: int | None
+    assignee_name: str | None
+    scheduled_at: datetime | None
+    created_at: datetime
+
+
+class RequestPage(BaseModel):
+    items: list[RequestRow]
+    next_cursor: str | None
+
+
+class RequestSummary(BaseModel):
+    by_status: dict[RequestStatus, int]
+    open_urgent: int
+    open_needs_review: int
+
+
+class RequestDetail(RequestRow):
+    phone: str | None
+    email: str | None
+    description: str
+    followup_answers: dict[str, str]
+    entry_permission: EntryPermission
+    entry_notes: str | None
+    source: RequestSource
+    contact_matched: bool
+    self_check_shown: str | None
+    self_check_tried: bool
+    emergency_ack_at: datetime | None
+    updated_at: datetime
+    photo_ids: list[int]
+    notes: list
+
+
+class PhotoUrl(BaseModel):
+    url: str
