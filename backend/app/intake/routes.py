@@ -1,8 +1,8 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import select
@@ -81,12 +81,21 @@ def list_units(property_id: int, db: Db):
 )
 def submit_request(
     request: Request,
-    data: RequestCreate,
+    # A JSON part, because the follow-up answers do not fit flat form fields.
+    body: Annotated[str, Form(alias="data")],
     # Required, so a retry can never create a second request. Long enough to rule out two
     # tenants' browsers generating the same key, which would silently drop one request.
     idempotency_key: Annotated[str, Header(min_length=16, max_length=255)],
     db: Db,
+    photos: Annotated[list[UploadFile], File()] = [],
 ):
+    try:
+        data = RequestCreate.model_validate_json(body)
+    except ValidationError as error:
+        raise RequestValidationError(
+            [{"loc": ("body", *e["loc"]), "msg": e["msg"]} for e in error.errors()]
+        ) from None
+
     # Looks like a normal success, with nothing saved, so a bot learns nothing.
     if data.website:
         return RequestCreated(reference_number=next_reference(db))
@@ -104,5 +113,5 @@ def submit_request(
     if errors:
         raise RequestValidationError(errors)
 
-    created = create_request(db, data, idempotency_key, category)
+    created = create_request(db, data, idempotency_key, category, photos)
     return RequestCreated(reference_number=created.reference_number)

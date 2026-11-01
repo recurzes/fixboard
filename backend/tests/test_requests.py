@@ -86,7 +86,7 @@ def payload(unit: Unit, **overrides) -> dict:
 
 def post(client, body: dict, key: str | None = None, **headers):
     headers["Idempotency-Key"] = key or uuid4().hex
-    return client.post("/api/public/requests", json=body, headers=headers)
+    return client.post("/api/public/requests", data={"data": json.dumps(body)}, headers=headers)
 
 
 def request_count(db) -> int:
@@ -152,7 +152,8 @@ def test_missing_required_fields_are_all_reported(client):
 @pytest.mark.parametrize("key", [None, "too-short"])
 def test_missing_or_short_idempotency_key_returns_422(db, client, unit, key):
     headers = {"Idempotency-Key": key} if key else {}
-    response = client.post("/api/public/requests", json=payload(unit), headers=headers)
+    body = {"data": json.dumps(payload(unit))}
+    response = client.post("/api/public/requests", data=body, headers=headers)
 
     assert response.status_code == 422
     assert response.json()["error"]["fields"][0]["field"] == "header.idempotency-key"
