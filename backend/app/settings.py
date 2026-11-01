@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     storage_access_key_id: str = Field(min_length=1)
     storage_secret_access_key: str = Field(min_length=1)
     storage_region: str = "auto"
+    signed_url_seconds: int = Field(default=300, gt=0)
     sentry_dsn: str | None = None
     public_form_enabled: bool = True
     rate_limit_ip: str = "10/minute"

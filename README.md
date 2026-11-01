@@ -6,8 +6,8 @@ A maintenance request tool for a rental company of about 75 units. Tenants submi
 
 Backend only, and still in progress:
 
-- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, and urgent answers.
-- **Not built yet:** the staff request screens, including viewing photos, plus history and the frontend.
+- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, and the staff API for listing, searching, and opening requests and their photos.
+- **Not built yet:** changing requests, notes, history, and the frontend.
 
 ## Stack
 
@@ -110,6 +110,7 @@ Settings come from environment variables or `backend/.env`. See `backend/.env.ex
 | `NEON_API_KEY`, `NEON_PROJECT_ID`, `NEON_BRANCH_ID` | Staff script only | | Creates staff accounts. The key gives admin access, so never commit it |
 | `STORAGE_ENDPOINT_URL`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | Yes | | The S3-compatible photo bucket. It must be private, and the secret key stays on the server |
 | `STORAGE_REGION` | No | `auto` | Region of the photo bucket |
+| `SIGNED_URL_SECONDS` | No | `300` | How long a staff photo link works |
 | `SENTRY_DSN` | No | off | Error reporting |
 | `PUBLIC_FORM_ENABLED` | No | `true` | `false` closes the public form |
 | `RATE_LIMIT_IP` | No | `10/minute` | Limit per IP on the public form |
@@ -132,6 +133,10 @@ Everything the form asks lives in `backend/app/intake/form_config.json`, and the
 | GET | `/api/public/properties/{id}/units` | Public | Active units of a property |
 | POST | `/api/public/requests` | Public, rate limited | Submit a request with up to 5 photos, returns only the reference number |
 | GET | `/api/staff/me` | Staff | The signed-in staff user |
+| GET | `/api/staff/requests` | Staff | List requests, 25 per page, newest first |
+| GET | `/api/staff/requests/summary` | Staff | Counts by status, plus open urgent and needs-review counts |
+| GET | `/api/staff/requests/{id}` | Staff | Full request, with photo ids. Notes stay empty until the notes API exists |
+| GET | `/api/staff/requests/{id}/photos/{photo_id}` | Staff | A short-lived signed link to one photo |
 
 Submit a request as multipart, using a `unit_id` from your own data. Plain JSON bodies are not accepted:
 
@@ -162,6 +167,14 @@ curl -X POST http://localhost:8000/api/public/requests \
 - **`not_an_emergency`:** must be `true` while `require_emergency_ack` is on in the form config.
 - **Urgent requests:** the server sets the flag from the answers, and the request is still accepted.
 - **`Idempotency-Key`:** required, 16 to 255 characters. Use a new UUID for each request, and the same one for a retry, which returns the original reference number.
+
+The staff list takes these query parameters, and all of them can be combined:
+
+- **`property`, `status`, `category`:** repeat one to match any of its values, for example `?status=new&status=scheduled`.
+- **`needs_review`, `urgent`:** `true` or `false`.
+- **`q`:** partial, case-insensitive search on reference number, unit label, and tenant name. An exact reference number returns only that request.
+- **`include_done`:** Done requests are hidden unless this is `true` or `status` names `done`. This also applies to `q`, so searching for a Done request's reference number needs one of them.
+- **`cursor`:** the `next_cursor` from the previous page. It is `null` on the last page. Keep the same filters while paging.
 
 Errors look like `{ "error": { "code", "message" } }`, and a 422 also lists `fields`. When the form is closed, the response is a 503 with the code `form_closed`. When photo storage is down, it is a 503 with the code `service_unavailable`.
 

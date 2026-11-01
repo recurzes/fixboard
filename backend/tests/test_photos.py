@@ -135,7 +135,7 @@ def test_signed_url_is_signed_and_expires(monkeypatch):
 
     assert "/photos/requests/1/a.jpg?" in url
     assert "X-Amz-Signature=" in url
-    assert f"X-Amz-Expires={storage.SIGNED_URL_SECONDS}" in url
+    assert f"X-Amz-Expires={settings.signed_url_seconds}" in url
 
 
 # T45

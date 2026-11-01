@@ -11,8 +11,6 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-SIGNED_URL_SECONDS = 300
-
 
 @lru_cache
 def _client():
@@ -57,7 +55,7 @@ def signed_url(path: str) -> str:
     return _client().generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.storage_bucket, "Key": path},
-        ExpiresIn=SIGNED_URL_SECONDS,
+        ExpiresIn=settings.signed_url_seconds,
     )
 
 
