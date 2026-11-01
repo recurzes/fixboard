@@ -10,6 +10,7 @@ jobs:
         working-directory: backend
     env:
       DATABASE_URL: postgresql+psycopg://fixboard:fixboard@localhost:5432/fixboard
+      SUPABASE_URL: https://test.supabase.invalid
     services:
       postgres:
         image: postgres:17
