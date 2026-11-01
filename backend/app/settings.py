@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     neon_project_id: str | None = None
     neon_branch_id: str | None = None
     sentry_dsn: str | None = None
+    public_form_enabled: bool = True
+    rate_limit_ip: str = "10/minute"
+    rate_limit_unit_per_hour: int = 10
 
 
 settings = Settings()
