@@ -1,4 +1,5 @@
 from typing import Annotated
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import jwt
@@ -13,11 +14,13 @@ from app.settings import settings
 from app.staff.models import StaffUser
 
 # Asymmetric only, so a token can never be verified with a shared secret.
-ALGORITHMS = ["ES256", "RS256"]
-AUDIENCE = "authenticated"
+ALGORITHMS = ["EdDSA"]
+# Neon Auth sets both the issuer and the audience to the origin of the auth URL.
+_auth_url = urlsplit(settings.neon_auth_url)
+ORIGIN = f"{_auth_url.scheme}://{_auth_url.netloc}"
 
 # shortcut: each token with an unknown kid refetches the key set, add a cooldown if abused.
-jwks = PyJWKClient(f"{settings.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json", timeout=5)
+jwks = PyJWKClient(f"{settings.neon_auth_url.rstrip('/')}/.well-known/jwks.json", timeout=5)
 bearer = HTTPBearer(auto_error=False)
 
 Db = Annotated[Session, Depends(get_db)]
@@ -29,15 +32,16 @@ def _unauthorized() -> HTTPException:
 
 
 def verify_token(token: str) -> UUID:
-    """Returns the Supabase user id of a token with a valid signature, expiry and audience."""
+    """Returns the Neon Auth user id of a token with valid signature, expiry, issuer, audience."""
     try:
         key = jwks.get_signing_key_from_jwt(token).key
         claims = jwt.decode(
             token,
             key,
             algorithms=ALGORITHMS,
-            audience=AUDIENCE,
-            options={"require": ["exp", "aud", "sub"]},
+            audience=ORIGIN,
+            issuer=ORIGIN,
+            options={"require": ["exp", "aud", "iss", "sub"]},
         )
         return UUID(claims["sub"])
     except PyJWKClientConnectionError:
