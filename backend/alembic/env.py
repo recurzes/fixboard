@@ -1,5 +1,6 @@
 import app.assignees.models  # noqa: F401
 import app.intake.models  # noqa: F401
+import app.photos.models  # noqa: F401
 import app.requests.models  # noqa: F401
 import app.residents.models  # noqa: F401
 import app.staff.models  # noqa: F401

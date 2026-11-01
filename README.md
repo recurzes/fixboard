@@ -6,12 +6,12 @@ A maintenance request tool for a rental company of about 75 units. Tenants submi
 
 Backend only, and still in progress:
 
-- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake as JSON, follow-up questions, self-checks, and urgent answers.
-- **Not built yet:** photos, the staff request screens, history, and the frontend.
+- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, and urgent answers.
+- **Not built yet:** the staff request screens, including viewing photos, plus history and the frontend.
 
 ## Stack
 
-Python 3.13, FastAPI, SQLAlchemy 2, Alembic, and Postgres. Production uses Neon for the database and staff sign-in. Local development and CI use Postgres in Docker.
+Python 3.13, FastAPI, SQLAlchemy 2, Alembic, and Postgres. Production uses Neon for the database and staff sign-in. Local development and CI use Postgres in Docker. Photos go to a private S3-compatible bucket.
 
 ## Run it locally
 
@@ -23,14 +23,25 @@ cd backend
 cp .env.example .env
 ```
 
-Set these two values in `backend/.env`:
+Set these values in `backend/.env`:
 
 ```sh
 DATABASE_URL=postgresql+psycopg://fixboard:fixboard@localhost:5432/fixboard
 NEON_AUTH_URL=https://test.neon.invalid/neondb/auth
+STORAGE_ENDPOINT_URL=http://127.0.0.1:9100
+STORAGE_BUCKET=photos
+STORAGE_ACCESS_KEY_ID=test
+STORAGE_SECRET_ACCESS_KEY=test
 ```
 
 The placeholder auth URL lets the app start, but staff sign-in needs the real URL from the Neon console.
+
+The storage values point at a throwaway S3 server, which keeps its files in memory until you stop it. Requests without photos work without it. To submit photos locally, start it and create the bucket:
+
+```sh
+uvx --from 'moto[server]' moto_server -H 127.0.0.1 -p 9100
+curl -X PUT http://127.0.0.1:9100/photos
+```
 
 Then create the tables and start the server:
 
@@ -44,7 +55,7 @@ Check it at <http://localhost:8000/health>.
 
 **Check `DATABASE_URL` before running migrations or seed scripts.** They change whichever database it points to, so if `backend/.env` holds your Neon URL, they run against Neon.
 
-To run the backend in Docker instead, set `NEON_AUTH_URL` in your shell, because the container does not read `backend/.env`. Compose does not run migrations, so run them yourself:
+To run the backend in Docker instead, set `NEON_AUTH_URL` and the `STORAGE_*` values in your shell, because the container does not read `backend/.env`. Compose does not run migrations, so run them yourself:
 
 ```sh
 docker compose up -d --build
@@ -80,6 +91,14 @@ The roster is personal data. Git and Docker builds ignore `*.csv` files, so keep
 
 The staff script also needs `NEON_API_KEY`, `NEON_PROJECT_ID`, and `NEON_BRANCH_ID`. Neon's API takes no password, so new staff set theirs through the forgot-password flow.
 
+## Check for orphan photos
+
+This lists files in the bucket with no database row. Run it weekly. It only reports and deletes nothing, because a submit still in progress can look like an orphan.
+
+```sh
+uv run python -m app.photos.report
+```
+
 ## Configuration
 
 Settings come from environment variables or `backend/.env`. See `backend/.env.example`.
@@ -89,6 +108,8 @@ Settings come from environment variables or `backend/.env`. See `backend/.env.ex
 | `DATABASE_URL` | Yes | | Postgres URL using the psycopg driver. On Neon, use the direct host, not `-pooler` |
 | `NEON_AUTH_URL` | Yes | | Base URL of Neon Auth |
 | `NEON_API_KEY`, `NEON_PROJECT_ID`, `NEON_BRANCH_ID` | Staff script only | | Creates staff accounts. The key gives admin access, so never commit it |
+| `STORAGE_ENDPOINT_URL`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | Yes | | The S3-compatible photo bucket. It must be private, and the secret key stays on the server |
+| `STORAGE_REGION` | No | `auto` | Region of the photo bucket |
 | `SENTRY_DSN` | No | off | Error reporting |
 | `PUBLIC_FORM_ENABLED` | No | `true` | `false` closes the public form |
 | `RATE_LIMIT_IP` | No | `10/minute` | Limit per IP on the public form |
@@ -109,16 +130,15 @@ Everything the form asks lives in `backend/app/intake/form_config.json`, and the
 | GET | `/api/public/config` | Public | Categories, follow-up questions, self-checks, urgent answers, emergency number |
 | GET | `/api/public/properties` | Public | Active properties |
 | GET | `/api/public/properties/{id}/units` | Public | Active units of a property |
-| POST | `/api/public/requests` | Public, rate limited | Submit a request, returns only the reference number |
+| POST | `/api/public/requests` | Public, rate limited | Submit a request with up to 5 photos, returns only the reference number |
 | GET | `/api/staff/me` | Staff | The signed-in staff user |
 
-Submit a request, using a `unit_id` from your own data:
+Submit a request as multipart, using a `unit_id` from your own data. Plain JSON bodies are not accepted:
 
 ```sh
 curl -X POST http://localhost:8000/api/public/requests \
-  -H "Content-Type: application/json" \
   -H "Idempotency-Key: 3f2b8c1e-7a4d-4e9b-8f60-1c2d3e4f5a6b" \
-  -d '{
+  -F 'data={
     "unit_id": 1,
     "tenant_name": "Pat Lee",
     "phone": "(555) 123-4567",
@@ -128,9 +148,13 @@ curl -X POST http://localhost:8000/api/public/requests \
     "followup_answers": { "problem": "clogged_drain", "location": "kitchen" },
     "self_check_tried": true,
     "not_an_emergency": true
-  }'
+  }' \
+  -F photos=@sink.jpg \
+  -F photos=@drain.png
 ```
 
+- **`data`:** the request fields, as a JSON string.
+- **`photos`:** optional and repeated, up to 5 JPG, PNG, or HEIC files of 10 MB each. The server checks the real file type, removes EXIF data including GPS, and stores HEIC as JPEG. If any photo is rejected or the upload fails, no request is created.
 - **Contact details:** send a phone number, an email address, or both.
 - **`entry_permission`:** one of `anytime`, `notify_first`, or `only_when_home`.
 - **`followup_answers`:** question id to answer, checked against the chosen category in `backend/app/intake/form_config.json`. For a choice question, send the option's `value`.
@@ -139,7 +163,7 @@ curl -X POST http://localhost:8000/api/public/requests \
 - **Urgent requests:** the server sets the flag from the answers, and the request is still accepted.
 - **`Idempotency-Key`:** required, 16 to 255 characters. Use a new UUID for each request, and the same one for a retry, which returns the original reference number.
 
-Errors look like `{ "error": { "code", "message" } }`, and a 422 also lists `fields`. When the form is closed, the response is a 503 with the code `form_closed`.
+Errors look like `{ "error": { "code", "message" } }`, and a 422 also lists `fields`. When the form is closed, the response is a 503 with the code `form_closed`. When photo storage is down, it is a 503 with the code `service_unavailable`.
 
 ## Tests
 
@@ -152,4 +176,4 @@ uv run ruff check .
 uv run pytest
 ```
 
-They use the local database even if `backend/.env` points at Neon. A `DATABASE_URL` set in your shell takes priority, though, so unset it first: the tests run migrations on that database.
+They use the local database even if `backend/.env` points at Neon, and a fake bucket in place of real storage. A `DATABASE_URL` set in your shell takes priority, though, so unset it first: the tests run migrations on that database.

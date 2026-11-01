@@ -6,6 +6,10 @@ import pytest
 # Without it set, the `db` tests need the compose database: docker compose up -d db
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://fixboard:fixboard@localhost:5432/fixboard")
 os.environ.setdefault("NEON_AUTH_URL", "https://test.neon.invalid/neondb/auth")
+os.environ.setdefault("STORAGE_ENDPOINT_URL", "https://storage.test.invalid")
+os.environ.setdefault("STORAGE_BUCKET", "photos")
+os.environ.setdefault("STORAGE_ACCESS_KEY_ID", "test")
+os.environ.setdefault("STORAGE_SECRET_ACCESS_KEY", "test")
 
 
 @pytest.fixture(scope="session")
