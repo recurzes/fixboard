@@ -8,6 +8,7 @@ from app.intake.routes import router as intake_router
 from app.log import RequestLogMiddleware, configure_logging
 from app.sentry import init_sentry
 from app.settings import settings
+from app.staff.routes import router as staff_router
 
 
 def create_app(form_config_path: Path = FORM_CONFIG_PATH) -> FastAPI:
@@ -19,6 +20,7 @@ def create_app(form_config_path: Path = FORM_CONFIG_PATH) -> FastAPI:
     app.add_middleware(RequestLogMiddleware)
     register_error_handlers(app)
     app.include_router(intake_router)
+    app.include_router(staff_router)
 
     @app.get("/health")
     def health():
