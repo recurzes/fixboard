@@ -6,13 +6,22 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 
+class FormClosed(HTTPException):
+    """Has its own code, so the frontend can tell the kill switch from an outage."""
+
+    code = "form_closed"
+
+    def __init__(self):
+        super().__init__(503, "The request form is closed, please call the office")
+
+
 def _error(status: int, code: str, message: str, headers=None, **extra) -> JSONResponse:
     content = {"error": {"code": code, "message": message, **extra}}
     return JSONResponse(content, status_code=status, headers=headers)
 
 
 async def _http_error(request: Request, exc: HTTPException) -> JSONResponse:
-    code = HTTPStatus(exc.status_code).name.lower()
+    code = getattr(exc, "code", HTTPStatus(exc.status_code).name.lower())
     return _error(exc.status_code, code, str(exc.detail), exc.headers)
 
 

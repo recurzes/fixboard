@@ -122,6 +122,73 @@ This does **not** override Section 2. Don't build unspecced things on your own -
 - If an addition is later added to the spec, change its **Status** to `promoted to spec` - don't delete the entry.
 - If it's reverted, change **Status** to `reverted` and add the reverting commit hash in **Notes**.
 
+## 7. Codebase Map
+
+**Read the map before the code. Keep the map current.**
+
+Keep a codebase map at `notes/codebase-map.md`. Create it if it doesn't exist (explore the codebase once to build it, then reuse it).
+
+### Why it exists
+
+- **Save tokens:** get context for adding a feature without reading the whole codebase.
+- **Faster features:** whether by AI or by hand, know where to go immediately.
+- **Live walkthroughs:** jump to the right place and explain it without freezing up.
+
+### How to use it
+
+- Before exploring code, read `notes/codebase-map.md` first.
+- Use it to pick which folders and files to open. Read only those.
+- If the map is missing something or is wrong, fix the map in the same change.
+
+### When to update it
+
+Update the map in the same branch whenever you:
+- Add, remove, or rename a domain folder or an important file
+- Add or change a core function or feature
+- Change how a feature works or how domains connect
+
+Don't wait for a separate task. A stale map is worse than no map.
+
+### What goes in it
+
+Keep each section short and scannable. Use bullets, not paragraphs.
+
+1. **Project in one paragraph** - what it is, who uses it, stack, how to run it.
+2. **Domain folders** - one section per domain folder (template below).
+3. **Root files** - what each file at the project root does (config, env examples, Docker, CI, package files, etc.).
+4. **Files outside any domain folder** - shared utils, scripts, migrations, assets, or anything that doesn't belong to a domain. Say what it is and who uses it.
+5. **How domains connect** - a short list of which domain calls which, and the main data flow.
+6. **Where to add things** - a quick lookup: "Adding X? Start in Y."
+7. **Footer** - "Last verified" date and commit hash (`date -Iseconds`, `git rev-parse --short HEAD`).
+
+### Domain folder template
+
+```markdown
+### `path/to/domain/`
+
+- **Purpose:** one sentence on what this domain owns.
+- **Contents:**
+  - `file_a.py` - what it does
+  - `file_b.py` - what it does
+- **Core functions:**
+  - `function_name()` in `file_a.py`
+    - **What it does:** plain-language summary
+    - **Feature context:** why this exists and which user-facing feature it powers
+    - **Talking point:** one line to explain it live, e.g. "this is where X turns into Y"
+- **Depends on:** other domains or services it calls
+- **Used by:** what calls into it
+- **Add a feature here by:** the 2-4 steps to extend it
+- **Gotchas:** things that trip people up (or "none")
+```
+
+### Rules for writing it
+
+- Explain the **core functions** - the ones that make the project work - not every helper.
+- Always include the **feature context**: what the function is for, not just what it does.
+- Write so someone can explain it out loud with no prep. Plain words, no jargon dumps.
+- Don't paste code. Point to the file and function name.
+- Don't invent. If you haven't read it, don't describe it. Mark unknowns as `TODO: verify`.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

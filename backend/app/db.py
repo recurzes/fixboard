@@ -3,6 +3,9 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.settings import settings
 
+# Postgres raises on an id outside its integer range, which would turn a 404 or 422 into a 500.
+MAX_ID = 2**31 - 1
+
 
 class Base(DeclarativeBase):
     metadata = MetaData(
