@@ -1,11 +1,254 @@
 {
+  "emergency_number": "(000) 000-0000",
+  "require_emergency_ack": true,
   "categories": [
-    { "id": "ac_heating", "label": "AC/heating" },
-    { "id": "plumbing", "label": "Plumbing" },
-    { "id": "electrical", "label": "Electrical" },
-    { "id": "pest", "label": "Pest" },
-    { "id": "appliance", "label": "Appliance" },
-    { "id": "door_lock", "label": "Door/lock" },
-    { "id": "other", "label": "Other" }
+    {
+      "id": "ac_heating",
+      "label": "AC/heating",
+      "questions": [
+        {
+          "id": "symptom",
+          "label": "What is happening?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "warm_air", "label": "AC is blowing warm air" },
+            { "value": "not_turning_on", "label": "It is not turning on" },
+            { "value": "no_heat", "label": "It runs but does not heat" },
+            { "value": "other", "label": "Something else" }
+          ]
+        },
+        {
+          "id": "filter_changed",
+          "label": "When was the filter last changed?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "under_3_months", "label": "In the last 3 months" },
+            { "value": "over_3_months", "label": "More than 3 months ago" },
+            { "value": "not_sure", "label": "Not sure" }
+          ]
+        },
+        {
+          "id": "above_90",
+          "label": "Is it above 90°F inside your unit right now?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "yes", "label": "Yes", "urgent": true },
+            { "value": "no", "label": "No" }
+          ]
+        },
+        {
+          "id": "gas_smell",
+          "label": "Do you smell gas?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "yes", "label": "Yes", "urgent": true },
+            { "value": "no", "label": "No" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "plumbing",
+      "label": "Plumbing",
+      "questions": [
+        {
+          "id": "problem",
+          "label": "What is the problem?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            {
+              "value": "clogged_drain",
+              "label": "A clogged drain",
+              "self_check": {
+                "id": "clogged_drain",
+                "text": "Stop running water into the drain. If you have a plunger, try it for about a minute. Do not use chemical drain cleaners. If the drain does not clear, or water starts to back up, stop and leave it for us.",
+                "pending_client_approval": true
+              }
+            },
+            { "value": "active_flooding", "label": "Water is flooding and will not stop", "urgent": true },
+            { "value": "leak", "label": "A leak or drip" },
+            { "value": "toilet", "label": "A toilet is not working" },
+            { "value": "no_water", "label": "No water or no hot water" },
+            { "value": "other", "label": "Something else" }
+          ]
+        },
+        {
+          "id": "location",
+          "label": "Where is it?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "kitchen", "label": "Kitchen" },
+            { "value": "bathroom", "label": "Bathroom" },
+            { "value": "laundry", "label": "Laundry" },
+            { "value": "other", "label": "Somewhere else" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "electrical",
+      "label": "Electrical",
+      "questions": [
+        {
+          "id": "problem",
+          "label": "What are you noticing?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "sparks", "label": "Sparks", "urgent": true },
+            { "value": "burning_smell", "label": "A burning smell", "urgent": true },
+            {
+              "value": "outlet_or_lights_out",
+              "label": "An outlet or lights stopped working",
+              "self_check": {
+                "id": "gfci_or_breaker_reset",
+                "text": "With dry hands, look for an outlet with TEST and RESET buttons, usually in the kitchen or bathroom, and press RESET once. If that does not help, check your breaker panel. If a breaker is off, switch it fully off and then back on, one time only. If it trips again, or you see scorch marks or hear buzzing, stop and leave it for us.",
+                "pending_client_approval": true
+              }
+            },
+            { "value": "flickering", "label": "Lights are flickering" },
+            { "value": "other", "label": "Something else" }
+          ]
+        },
+        {
+          "id": "extent",
+          "label": "How much of your unit is affected?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "one_spot", "label": "One outlet or light" },
+            { "value": "one_room", "label": "One room" },
+            { "value": "whole_unit", "label": "The whole unit" },
+            { "value": "not_sure", "label": "Not sure" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pest",
+      "label": "Pest",
+      "questions": [
+        {
+          "id": "pest_type",
+          "label": "What have you seen?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "roaches", "label": "Roaches" },
+            { "value": "ants", "label": "Ants" },
+            { "value": "rodents", "label": "Mice or rats" },
+            { "value": "bed_bugs", "label": "Bed bugs" },
+            { "value": "other", "label": "Something else" }
+          ]
+        },
+        {
+          "id": "frequency",
+          "label": "How often do you see them?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "once", "label": "Just once" },
+            { "value": "sometimes", "label": "Sometimes" },
+            { "value": "daily", "label": "Every day" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "appliance",
+      "label": "Appliance",
+      "questions": [
+        {
+          "id": "appliance",
+          "label": "Which appliance?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "fridge", "label": "Fridge" },
+            { "value": "stove_oven", "label": "Stove or oven" },
+            { "value": "dishwasher", "label": "Dishwasher" },
+            { "value": "washer_dryer", "label": "Washer or dryer" },
+            { "value": "other", "label": "Something else" }
+          ]
+        },
+        {
+          "id": "working",
+          "label": "Is it working at all?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "not_at_all", "label": "Not at all" },
+            { "value": "partly", "label": "Partly" }
+          ]
+        },
+        {
+          "id": "gas_smell",
+          "label": "Do you smell gas?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "yes", "label": "Yes", "urgent": true },
+            { "value": "no", "label": "No" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "door_lock",
+      "label": "Door/lock",
+      "questions": [
+        {
+          "id": "problem",
+          "label": "What is the problem?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "will_not_lock", "label": "It will not lock" },
+            { "value": "key_problem", "label": "The key sticks or will not turn" },
+            { "value": "damaged", "label": "The door or lock is damaged" },
+            { "value": "other", "label": "Something else" }
+          ]
+        },
+        {
+          "id": "door",
+          "label": "Which door?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "front", "label": "Front door" },
+            { "value": "back", "label": "Back or patio door" },
+            { "value": "inside", "label": "A door inside the unit" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "other",
+      "label": "Other",
+      "questions": [
+        {
+          "id": "location",
+          "label": "Where in your unit is it?",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "gas_smell",
+          "label": "Do you smell gas?",
+          "type": "single_choice",
+          "required": true,
+          "options": [
+            { "value": "yes", "label": "Yes", "urgent": true },
+            { "value": "no", "label": "No" }
+          ]
+        }
+      ]
+    }
   ]
 }

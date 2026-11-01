@@ -6,8 +6,8 @@ A maintenance request tool for a rental company of about 75 units. Tenants submi
 
 Backend only, and still in progress:
 
-- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, and public request intake as JSON.
-- **Not built yet:** follow-up questions, photos, the staff request screens, history, and the frontend.
+- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake as JSON, follow-up questions, self-checks, and urgent answers.
+- **Not built yet:** photos, the staff request screens, history, and the frontend.
 
 ## Stack
 
@@ -94,12 +94,19 @@ Settings come from environment variables or `backend/.env`. See `backend/.env.ex
 | `RATE_LIMIT_IP` | No | `10/minute` | Limit per IP on the public form |
 | `RATE_LIMIT_UNIT_PER_HOUR` | No | `10` | Limit per unit on the public form |
 
+Everything the form asks lives in `backend/app/intake/form_config.json`, and the app refuses to start if that file is invalid. Changing it needs a redeploy. It holds:
+
+- **Categories and questions:** 2 to 4 questions per category.
+- **Option flags:** `urgent`, and `self_check` on the answers allowed to have one. Self-check wording is a draft until the client approves it, marked `pending_client_approval`.
+- **`emergency_number`:** still the placeholder `(000) 000-0000`. Replace it before real tenants use the form.
+- **`require_emergency_ack`:** `false` removes the "not an emergency" requirement.
+
 ## API
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
 | GET | `/health` | Public | Liveness check |
-| GET | `/api/public/config` | Public | Request categories |
+| GET | `/api/public/config` | Public | Categories, follow-up questions, self-checks, urgent answers, emergency number |
 | GET | `/api/public/properties` | Public | Active properties |
 | GET | `/api/public/properties/{id}/units` | Public | Active units of a property |
 | POST | `/api/public/requests` | Public, rate limited | Submit a request, returns only the reference number |
@@ -117,12 +124,19 @@ curl -X POST http://localhost:8000/api/public/requests \
     "phone": "(555) 123-4567",
     "category": "plumbing",
     "description": "The sink is clogged",
-    "entry_permission": "notify_first"
+    "entry_permission": "notify_first",
+    "followup_answers": { "problem": "clogged_drain", "location": "kitchen" },
+    "self_check_tried": true,
+    "not_an_emergency": true
   }'
 ```
 
 - **Contact details:** send a phone number, an email address, or both.
 - **`entry_permission`:** one of `anytime`, `notify_first`, or `only_when_home`.
+- **`followup_answers`:** question id to answer, checked against the chosen category in `backend/app/intake/form_config.json`. For a choice question, send the option's `value`.
+- **`self_check_tried`:** whether the tenant ticked "I tried it". Ignored unless the answers lead to a self-check.
+- **`not_an_emergency`:** must be `true` while `require_emergency_ack` is on in the form config.
+- **Urgent requests:** the server sets the flag from the answers, and the request is still accepted.
 - **`Idempotency-Key`:** required, 16 to 255 characters. Use a new UUID for each request, and the same one for a retry, which returns the original reference number.
 
 Errors look like `{ "error": { "code", "message" } }`, and a 422 also lists `fields`. When the form is closed, the response is a 503 with the code `form_closed`.

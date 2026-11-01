@@ -61,6 +61,9 @@ class MaintenanceRequest(Base):
     contact_matched: Mapped[bool]
     needs_review: Mapped[bool] = mapped_column(server_default=false())
     urgent: Mapped[bool] = mapped_column(server_default=false())
+    self_check_shown: Mapped[str | None]
+    self_check_tried: Mapped[bool] = mapped_column(server_default=false())
+    emergency_ack_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Null for staff-logged requests (T65), which do not send one. Nulls do not collide.
     idempotency_key: Mapped[str | None] = mapped_column(unique=True)
     created_at: Mapped[datetime] = mapped_column(

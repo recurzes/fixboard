@@ -21,7 +21,9 @@ class RequestCreate(BaseModel):
     description: str = Field(min_length=1, max_length=5000)
     entry_permission: EntryPermission
     entry_notes: str | None = Field(default=None, max_length=1000)
-    not_an_emergency: bool = False  # enforced and stored by T42
+    followup_answers: dict[str, str] = {}  # checked against the category's questions by the route
+    self_check_tried: bool = False
+    not_an_emergency: bool = False
     website: str | None = None  # the honeypot: hidden in the form, so only bots fill it
 
     @field_validator("*", mode="before")
@@ -45,6 +47,11 @@ class RequestCreate(BaseModel):
         if not _EMAIL.fullmatch(value):
             raise ValueError("Invalid email address")
         return value.lower()
+
+    @field_validator("followup_answers")
+    @classmethod
+    def blank_answers_are_missing(cls, value: dict[str, str]) -> dict[str, str]:
+        return {question: answer for question, answer in value.items() if answer}
 
     @model_validator(mode="after")
     def phone_or_email_is_present(self):
