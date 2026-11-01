@@ -21,6 +21,7 @@ services:
       DATABASE_URL: postgresql+psycopg://fixboard:fixboard@db:5432/fixboard
       NEON_AUTH_URL: ${NEON_AUTH_URL:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      PUBLIC_FORM_ENABLED: ${PUBLIC_FORM_ENABLED:-true}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
