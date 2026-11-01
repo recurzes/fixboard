@@ -5,6 +5,7 @@ import pytest
 # app.settings reads this on import. The engine is lazy, so only the `db` fixture connects.
 # Without it set, the `db` tests need the compose database: docker compose up -d db
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://fixboard:fixboard@localhost:5432/fixboard")
+os.environ.setdefault("SUPABASE_URL", "https://test.supabase.invalid")
 
 
 @pytest.fixture(scope="session")
