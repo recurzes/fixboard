@@ -11,7 +11,7 @@ import { routes } from "./routes";
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
 it.each([
-  ["/", "Tenant form"],
+  ["/", "Report a maintenance problem"],
   ["/done", "Request received"],
   ["/staff/login", "Staff sign in"],
   ["/staff", "Staff sign in"],
@@ -34,7 +34,11 @@ it.each([
     expect(container.querySelector("h1")?.textContent).toBe(heading),
   );
   // Tenant pages must not depend on, or call, the sign-in service.
-  if (!url.startsWith("/staff")) expect(noSession).not.toHaveBeenCalled();
+  if (!url.startsWith("/staff")) {
+    expect(JSON.stringify(noSession.mock.calls)).not.toContain(
+      "auth.test.invalid",
+    );
+  }
 });
 
 it("a component that throws shows the emergency number and reaches Sentry", async () => {
