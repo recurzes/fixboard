@@ -6,8 +6,8 @@ A maintenance request tool for a rental company of about 75 units. Tenants submi
 
 Backend only, and still in progress:
 
-- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, and the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list.
-- **Not built yet:** history and the frontend.
+- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list, and an append-only history of who changed what.
+- **Not built yet:** the frontend.
 
 ## Stack
 
@@ -136,7 +136,7 @@ Everything the form asks lives in `backend/app/intake/form_config.json`, and the
 | GET | `/api/staff/requests` | Staff | List requests, 25 per page, newest first |
 | GET | `/api/staff/requests/summary` | Staff | Counts by status, plus open urgent and needs-review counts |
 | POST | `/api/staff/requests` | Staff | Log a phone, text, or in-person request |
-| GET | `/api/staff/requests/{id}` | Staff | Full request, with photo ids and notes |
+| GET | `/api/staff/requests/{id}` | Staff | Full request, with photo ids, notes, and history |
 | PATCH | `/api/staff/requests/{id}` | Staff | Change status, assignee, or scheduled time, or clear the review flag |
 | POST | `/api/staff/requests/{id}/notes` | Staff | Add an internal note |
 | GET | `/api/staff/requests/{id}/photos/{photo_id}` | Staff | A short-lived signed link to one photo |
@@ -200,6 +200,10 @@ curl -X PATCH http://localhost:8000/api/staff/requests/1 \
 To log a request for a tenant, send `POST /api/staff/requests` as JSON with the same fields as the public form, plus `source`: `phone`, `text`, or `in_person`. It skips the honeypot, rate limits, and acknowledgement, never flags for review, and takes no photos or `Idempotency-Key`, so a repeated call creates a second request.
 
 Vendor-list names must be unique, and a duplicate returns 409. In-house maintenance can be renamed but not deactivated. A deactivated entry stays on the requests that already have it.
+
+The request detail includes `history`, newest first. Each event has `event` (`created`, `changed`, or `note_added`), `field`, `old_value`, `new_value`, `actor_name`, and `created_at`. A null `actor_name` means the tenant. Staff actors always come from the sign-in token. Note text and tenant details are never copied into history, and assignees are stored by name, so a later rename does not change past events.
+
+The database refuses `UPDATE` and `DELETE` on the history table, so events written to any database are permanent, including test ones.
 
 Errors look like `{ "error": { "code", "message" } }`, and a 422 also lists `fields`. When the form is closed, the response is a 503 with the code `form_closed`. When photo storage is down, it is a 503 with the code `service_unavailable`.
 
