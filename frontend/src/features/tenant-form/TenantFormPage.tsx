@@ -1,16 +1,18 @@
-import { useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { flushSync } from "react-dom";
+import { siteConfig } from "../../shared/lib/siteConfig";
 import { EmergencyLink } from "../../shared/ui/ErrorScreen";
 import { Button } from "../../shared/ui/Button";
 import { Alert, Spinner } from "../../shared/ui/Feedback";
+import { DetailsStep } from "./DetailsStep";
 import { formReducer, initialFormState, LAST_STEP } from "./formState";
 import { IssueStep } from "./IssueStep";
 import { LoadError } from "./LoadError";
 import { LocationContactStep } from "./LocationContactStep";
 import { usePublicConfig } from "./usePublicConfig";
 import type { Category } from "./usePublicConfig";
-import { validateStep1, validateStep2 } from "./validation";
+import { validateStep1, validateStep2, validateStep3 } from "./validation";
 
 const STEP_TITLES: Record<number, string> = {
   1: "Your home and contact details",
@@ -28,7 +30,10 @@ export function TenantFormPage() {
         this form. Call <EmergencyLink />.
       </Alert>
       {config.data ? (
-        <TenantForm categories={config.data.categories} />
+        <TenantForm
+          categories={config.data.categories}
+          requireEmergencyAck={config.data.require_emergency_ack}
+        />
       ) : config.isError ? (
         <LoadError
           what="the form"
@@ -44,7 +49,13 @@ export function TenantFormPage() {
   );
 }
 
-function TenantForm({ categories }: { categories: Category[] }) {
+function TenantForm({
+  categories,
+  requireEmergencyAck,
+}: {
+  categories: Category[];
+  requireEmergencyAck: boolean;
+}) {
   const [{ step, fields }, dispatch] = useReducer(
     formReducer,
     initialFormState,
@@ -53,12 +64,30 @@ function TenantForm({ categories }: { categories: Category[] }) {
   const form = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
+  // Drafts aren't saved, so this prompt is all that protects typed data.
+  // Leaving for the confirmation page unmounts this, which removes the prompt.
+  const hasData =
+    JSON.stringify(fields) !== JSON.stringify(initialFormState.fields);
+  useEffect(() => {
+    if (!hasData) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      // Chromium fires this for tel: links too, and a call must never wait on a prompt.
+      // shortcut: relies on a clicked link taking focus, which desktop Safari skips, so it still prompts there.
+      if (document.activeElement?.matches('a[href^="tel:"]')) return;
+      event.preventDefault();
+      // Chrome and Edge before 119 ignore preventDefault here.
+      event.returnValue = true;
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasData]);
+
   const stepErrors: Record<string, string> =
     step === 1
       ? validateStep1(fields)
       : step === 2
         ? validateStep2(fields, categories)
-        : {};
+        : validateStep3(fields, requireEmergencyAck);
 
   function move(type: "next" | "back") {
     // Flushed so focus lands after the new step is on the page.
@@ -72,7 +101,11 @@ function TenantForm({ categories }: { categories: Category[] }) {
 
   function next(event: FormEvent) {
     event.preventDefault();
-    if (Object.keys(stepErrors).length === 0) return move("next");
+    if (Object.keys(stepErrors).length === 0) {
+      // shortcut: a valid Submit does nothing yet, F51 sends the request.
+      if (step < LAST_STEP) move("next");
+      return;
+    }
     flushSync(() => setShowErrors(true));
     // Page order is field order, so the first match is the first invalid field.
     const invalid = form.current?.querySelector<HTMLElement>(
@@ -108,7 +141,12 @@ function TenantForm({ categories }: { categories: Category[] }) {
           onCategoryChange={() => setShowErrors(false)}
         />
       ) : (
-        <p>This step isn't ready yet.</p>
+        <DetailsStep
+          fields={fields}
+          errors={showErrors ? stepErrors : {}}
+          requireEmergencyAck={requireEmergencyAck}
+          dispatch={dispatch}
+        />
       )}
 
       <div className="flex gap-3">
@@ -117,12 +155,13 @@ function TenantForm({ categories }: { categories: Category[] }) {
             Back
           </Button>
         )}
-        {step < LAST_STEP && (
-          <Button type="submit" className="flex-1">
-            Next
-          </Button>
-        )}
+        <Button type="submit" className="flex-1">
+          {step < LAST_STEP ? "Next" : "Submit"}
+        </Button>
       </div>
+      {step === LAST_STEP && (
+        <p className="text-sm text-gray-700">{siteConfig.privacyNotice}</p>
+      )}
     </form>
   );
 }
