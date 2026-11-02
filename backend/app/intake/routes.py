@@ -50,9 +50,15 @@ class UnitOut(BaseModel):
     label: str
 
 
-@router.get("/config", response_model=FormConfig)
+class PublicConfig(FormConfig):
+    # Not in form_config.json, because the kill switch is an environment setting.
+    form_enabled: bool
+
+
+@router.get("/config", response_model=PublicConfig)
 def get_config(request: Request):
-    return request.app.state.form_config
+    config = request.app.state.form_config
+    return PublicConfig(**config.model_dump(), form_enabled=settings.public_form_enabled)
 
 
 @router.get("/properties", response_model=list[PropertyOut])
