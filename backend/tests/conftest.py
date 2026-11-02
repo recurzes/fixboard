@@ -4,7 +4,10 @@ import pytest
 
 # app.settings reads this on import. The engine is lazy, so only the `db` fixture connects.
 # Without it set, the `db` tests need the compose database: docker compose up -d db
-os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://fixboard:fixboard@localhost:5432/fixboard")
+# 127.0.0.1, because compose binds only that, and on Windows trying localhost's ::1 first stalls
+# each new connection for about two minutes.
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://fixboard:fixboard@127.0.0.1:5432/fixboard")
+os.environ.setdefault("APP_ORIGIN", "https://app.test.invalid")
 os.environ.setdefault("NEON_AUTH_URL", "https://test.neon.invalid/neondb/auth")
 os.environ.setdefault("STORAGE_ENDPOINT_URL", "https://storage.test.invalid")
 os.environ.setdefault("STORAGE_BUCKET", "photos")

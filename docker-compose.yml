@@ -19,6 +19,7 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://fixboard:fixboard@db:5432/fixboard
+      APP_ORIGIN: ${APP_ORIGIN:-}
       NEON_AUTH_URL: ${NEON_AUTH_URL:-}
       STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-}
