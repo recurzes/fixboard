@@ -4,6 +4,8 @@ import { Checkbox, RadioGroup } from "../../shared/ui/Choice";
 import { EmergencyLink } from "../../shared/ui/ErrorScreen";
 import { Textarea } from "../../shared/ui/Field";
 import type { FormAction, FormFields } from "./formState";
+import { PhotoPicker } from "./PhotoPicker";
+import type { usePhotos } from "./photos";
 import type { Step3Errors } from "./validation";
 
 // Same as RequestCreate in backend/app/requests/schemas.py.
@@ -22,11 +24,13 @@ export function DetailsStep({
   fields,
   errors,
   requireEmergencyAck,
+  photos,
   dispatch,
 }: {
   fields: FormFields;
   errors: Step3Errors;
   requireEmergencyAck: boolean;
+  photos: ReturnType<typeof usePhotos>;
   dispatch: ActionDispatch<[FormAction]>;
 }) {
   const left = DESCRIPTION_LIMIT - fields.description.length;
@@ -60,6 +64,8 @@ export function DetailsStep({
             : `${fields.description.length} of ${DESCRIPTION_LIMIT} characters`}
         </p>
       </div>
+
+      <PhotoPicker photos={photos} />
 
       <RadioGroup
         label="Can we enter your home? (required)"

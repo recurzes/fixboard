@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import formConfig from "../../../../backend/app/intake/form_config.json";
 import { routes } from "../../app/routes";
 import { siteConfig } from "../../shared/lib/siteConfig";
+import { fakeImageApis, photo } from "./photos.testutil";
 
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -735,4 +736,222 @@ it("never asks once the form has left the page, as on the confirmation page", as
 
   expect(container.textContent).toContain("Request received");
   expect(promptsOnLeave()).toBe(false);
+});
+
+const CANNOT_DECODE = () => Promise.reject(new Error("cannot decode"));
+
+const pickPhotos = (container: HTMLElement, files: File[]) =>
+  act(async () => {
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, "files", { value: files, configurable: true });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+const removeButton = (container: HTMLElement, label: string) =>
+  container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+
+const previewSources = (container: HTMLElement) =>
+  [...container.querySelectorAll("img")].map((image) => image.src);
+
+async function photosOpen() {
+  fakeApi();
+  const container = await open();
+  await reachStep3(container);
+  return container;
+}
+
+it("opens the camera or library for several images, without forcing the camera", async () => {
+  fakeImageApis();
+  const container = await photosOpen();
+  const input =
+    container.querySelector<HTMLInputElement>('input[type="file"]')!;
+
+  expect(input.multiple).toBe(true);
+  expect(input.accept).toBe("image/*");
+  expect(input.hasAttribute("capture")).toBe(false);
+  expect(container.textContent).toContain("0 of 5");
+});
+
+it("lists chosen photos with a count, and refuses a sixth with a message", async () => {
+  fakeImageApis();
+  const container = await photosOpen();
+
+  await pickPhotos(container, [photo("1.jpg"), photo("2.jpg")]);
+  expect(container.textContent).toContain("2 of 5");
+  expect(container.textContent).toContain("1.jpg");
+
+  await pickPhotos(
+    container,
+    ["3", "4", "5"].map((n) => photo(`${n}.jpg`)),
+  );
+  expect(container.textContent).toContain("5 of 5");
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+
+  await pickPhotos(container, [photo("6.jpg")]);
+  expect(container.textContent).toContain("5 of 5");
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    "6.jpg: You can add up to 5 photos",
+  );
+  await vi.waitFor(() => expect(previewSources(container)).toHaveLength(5));
+});
+
+it("shows one message per refused file, and clears them on the next pick", async () => {
+  fakeImageApis();
+  const container = await photosOpen();
+  await pickPhotos(container, [photo("a.jpg")]);
+
+  await pickPhotos(container, [photo("clip.mp4", "video/mp4"), photo("a.jpg")]);
+  const messages = container.querySelectorAll('[role="alert"] li');
+  expect([...messages].map((item) => item.textContent)).toEqual([
+    "clip.mp4: Please choose a JPG, PNG, or HEIC photo",
+    "a.jpg: You already added this photo",
+  ]);
+
+  await pickPhotos(container, [photo("b.jpg")]);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("disables Submit while preparing, then shows the thumbnail and restores it", async () => {
+  let finish = () => {};
+  fakeImageApis({
+    decode: () => new Promise((resolve) => (finish = resolve)),
+  });
+  const container = await photosOpen();
+
+  await pickPhotos(container, [photo("a.jpg")]);
+  expect(button(container, "Preparing photos")).toBeUndefined();
+  const busy = container.querySelector<HTMLButtonElement>(
+    'button[type="submit"]',
+  )!;
+  expect(busy.disabled).toBe(true);
+  expect(busy.textContent).toContain("Preparing photos");
+  expect(container.textContent).toContain("1 of 5. Preparing photos");
+  expect(previewSources(container)).toEqual([]);
+
+  await act(async () => finish());
+
+  await vi.waitFor(() =>
+    expect(button(container, "Submit")?.disabled).toBe(false),
+  );
+  expect(previewSources(container)).toHaveLength(1);
+  expect(container.textContent).not.toContain("Preparing photos");
+});
+
+it("shrinks one photo at a time", async () => {
+  const finishes: (() => void)[] = [];
+  fakeImageApis({
+    decode: () => new Promise((resolve) => finishes.push(resolve)),
+  });
+  const container = await photosOpen();
+
+  await pickPhotos(container, [photo("a.jpg"), photo("b.jpg")]);
+  expect(finishes).toHaveLength(1);
+
+  await act(async () => finishes[0]());
+  await vi.waitFor(() => expect(finishes).toHaveLength(2));
+  await act(async () => finishes[1]());
+  await vi.waitFor(() => expect(button(container, "Submit")).toBeDefined());
+});
+
+it("removing a photo revokes its URL, frees its place, and keeps focus", async () => {
+  const { revoked } = fakeImageApis();
+  const container = await photosOpen();
+  await pickPhotos(container, [photo("a.jpg"), photo("b.jpg")]);
+  await vi.waitFor(() => expect(previewSources(container)).toHaveLength(2));
+  const [first, second] = previewSources(container);
+
+  await act(async () =>
+    removeButton(container, "Remove photo 1, a.jpg").click(),
+  );
+
+  expect(revoked).toContain(first);
+  expect(revoked).not.toContain(second);
+  expect(previewSources(container)).toEqual([second]);
+  expect(container.textContent).toContain("1 of 5");
+  expect(document.activeElement).toBe(button(container, "Add photos"));
+
+  // The same photo can be chosen again, and its label takes the next number.
+  await pickPhotos(container, [photo("a.jpg")]);
+  await vi.waitFor(() => expect(previewSources(container)).toHaveLength(2));
+  expect(removeButton(container, "Remove photo 2, a.jpg")).not.toBeNull();
+});
+
+it("drops a photo removed while preparing, without leaking a URL", async () => {
+  let finish = () => {};
+  const { created, revoked } = fakeImageApis({
+    decode: () => new Promise((resolve) => (finish = resolve)),
+  });
+  const container = await photosOpen();
+  await pickPhotos(container, [photo("a.jpg")]);
+
+  await act(async () =>
+    removeButton(container, "Remove photo 1, a.jpg").click(),
+  );
+  expect(button(container, "Submit")?.disabled).toBe(false);
+  await act(async () => finish());
+
+  expect(previewSources(container)).toEqual([]);
+  expect(container.textContent).toContain("0 of 5");
+  await vi.waitFor(() => expect(revoked).toEqual(created));
+  // Only the decoding URL, and no preview for a photo that's gone.
+  expect(created).toHaveLength(1);
+});
+
+it("keeps photos through a change of step, and revokes every URL on leaving", async () => {
+  const { created, revoked } = fakeImageApis();
+  const container = await photosOpen();
+  await pickPhotos(container, [photo("a.jpg"), photo("b.jpg")]);
+  await vi.waitFor(() => expect(previewSources(container)).toHaveLength(2));
+  const before = previewSources(container);
+
+  await act(async () => button(container, "Back")!.click());
+  await next(container);
+
+  expect(stepHeading(container)).toContain("Step 3 of 3");
+  expect(previewSources(container)).toEqual(before);
+
+  cleanups.splice(0).forEach((cleanup) => cleanup());
+  expect(new Set(revoked)).toEqual(new Set(created));
+});
+
+it("asks before leaving when the only data is a photo", async () => {
+  fakeImageApis();
+  const container = await photosOpen();
+  await pickPhotos(container, [photo("a.jpg")]);
+  expect(promptsOnLeave()).toBe(true);
+});
+
+it("keeps a photo the browser can't read, with no broken thumbnail", async () => {
+  fakeImageApis({ decode: CANNOT_DECODE });
+  const container = await photosOpen();
+
+  await pickPhotos(container, [photo("a.heic", "image/heic")]);
+
+  await vi.waitFor(() =>
+    expect(button(container, "Submit")?.disabled).toBe(false),
+  );
+  expect(container.textContent).toContain("1 of 5");
+  expect(container.textContent).toContain("No preview");
+  expect(previewSources(container)).toEqual([]);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("asks for a JPG or PNG when an unreadable photo is over the limit", async () => {
+  fakeImageApis({ decode: CANNOT_DECODE });
+  const container = await photosOpen();
+  const big = photo("a.heic", "image/heic", siteConfig.maxPhotoBytes + 1);
+
+  await pickPhotos(container, [big, photo("b.heic", "image/heic")]);
+
+  await vi.waitFor(() =>
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "a.heic: Please choose a JPG or PNG",
+    ),
+  );
+  await vi.waitFor(() =>
+    expect(button(container, "Submit")?.disabled).toBe(false),
+  );
+  expect(container.textContent).toContain("1 of 5");
+  expect(removeButton(container, "Remove photo 1, b.heic")).not.toBeNull();
 });

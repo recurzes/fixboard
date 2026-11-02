@@ -10,6 +10,7 @@ import { formReducer, initialFormState, LAST_STEP } from "./formState";
 import { IssueStep } from "./IssueStep";
 import { LoadError } from "./LoadError";
 import { LocationContactStep } from "./LocationContactStep";
+import { usePhotos } from "./photos";
 import { usePublicConfig } from "./usePublicConfig";
 import type { Category } from "./usePublicConfig";
 import { validateStep1, validateStep2, validateStep3 } from "./validation";
@@ -60,13 +61,16 @@ function TenantForm({
     formReducer,
     initialFormState,
   );
+  const photos = usePhotos();
   const [showErrors, setShowErrors] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const preparing = step === LAST_STEP && photos.preparing;
 
   // Drafts aren't saved, so this prompt is all that protects typed data.
   // Leaving for the confirmation page unmounts this, which removes the prompt.
   const hasData =
+    photos.items.length > 0 ||
     JSON.stringify(fields) !== JSON.stringify(initialFormState.fields);
   useEffect(() => {
     if (!hasData) return;
@@ -145,6 +149,7 @@ function TenantForm({
           fields={fields}
           errors={showErrors ? stepErrors : {}}
           requireEmergencyAck={requireEmergencyAck}
+          photos={photos}
           dispatch={dispatch}
         />
       )}
@@ -155,8 +160,12 @@ function TenantForm({
             Back
           </Button>
         )}
-        <Button type="submit" className="flex-1">
-          {step < LAST_STEP ? "Next" : "Submit"}
+        <Button type="submit" className="flex-1" loading={preparing}>
+          {preparing
+            ? "Preparing photos"
+            : step < LAST_STEP
+              ? "Next"
+              : "Submit"}
         </Button>
       </div>
       {step === LAST_STEP && (
