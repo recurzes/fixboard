@@ -12,6 +12,7 @@ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 const AUTH = "https://auth.test.invalid";
 const API = "https://api.test.invalid";
 const LIST = `${API}/api/staff/requests`;
+const SUMMARY = `${LIST}/summary`;
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
 const PAGE_SIZE = 25;
@@ -72,9 +73,27 @@ function answer(rows: RequestRow[], params: URLSearchParams) {
   };
 }
 
+/** Counted from the same rows as the list, with the backend's rule that open counts leave out Done. */
+function summaryOf(rows: RequestRow[]) {
+  const open = rows.filter(({ status }) => status !== "done");
+  const withStatus = (wanted: RequestRow["status"]) =>
+    rows.filter(({ status }) => status === wanted).length;
+  return {
+    by_status: {
+      new: withStatus("new"),
+      scheduled: withStatus("scheduled"),
+      waiting_on_vendor: withStatus("waiting_on_vendor"),
+      done: withStatus("done"),
+    },
+    open_urgent: open.filter(({ urgent }) => urgent).length,
+    open_needs_review: open.filter(({ needs_review }) => needs_review).length,
+  };
+}
+
 function fakeServers(
   rows: RequestRow[],
   list?: (url: string) => Response | Promise<Response> | undefined,
+  summary: () => Response = () => json(summaryOf(rows)),
 ) {
   const fetchMock = vi.fn(async (url: string) => {
     if (url === `${AUTH}/token`) return json({ token: "jwt" });
@@ -85,6 +104,7 @@ function fakeServers(
       return json({ categories: CATEGORIES });
     }
     if (url === `${API}/api/public/properties`) return json(PROPERTIES);
+    if (url === SUMMARY) return summary();
     if (url.startsWith(LIST)) {
       return (
         (await list?.(url)) ?? json(answer(rows, new URL(url).searchParams))
@@ -98,7 +118,9 @@ function fakeServers(
     listCalls: () =>
       fetchMock.mock.calls
         .map(([url]) => url)
-        .filter((url) => url.startsWith(LIST)),
+        .filter((url) => url.startsWith(LIST) && url !== SUMMARY),
+    summaryCalls: () =>
+      fetchMock.mock.calls.filter(([url]) => url === SUMMARY).length,
   };
 }
 
@@ -106,6 +128,7 @@ const cleanups: (() => void)[] = [];
 
 afterEach(async () => {
   cleanups.splice(0).forEach((cleanup) => cleanup());
+  vi.useRealTimers();
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => json({})),
@@ -517,6 +540,7 @@ it("a failed filter list says so, and the request list still works", async () =>
       if (url === `${API}/api/staff/me`) {
         return json({ name: "Sam Lee", email: "sam@example.com" });
       }
+      if (url === SUMMARY) return json(summaryOf([row(1)]));
       if (url.startsWith(LIST))
         return json(answer([row(1)], new URLSearchParams()));
       return json({ error: { code: "service_unavailable" } }, 503);
@@ -532,4 +556,194 @@ it("a failed filter list says so, and the request list still works", async () =>
   );
   // Falls back to the id, because the config holds the label.
   expect(container.querySelector("tbody")!.textContent).toContain("plumbing");
+});
+
+// Only the interval is faked, so fetches and the router still run for real.
+const fakePolling = () =>
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+const poll = () =>
+  act(async () => {
+    vi.advanceTimersByTime(30_000);
+  });
+
+const seesCount = (count: number) =>
+  vi.waitFor(() =>
+    expect(document.title).toBe(count ? `(${count}) Fixboard` : "Fixboard"),
+  );
+
+const chip = (container: HTMLElement, label: string) =>
+  [...container.querySelectorAll("button")].find(({ textContent }) =>
+    textContent.startsWith(`${label} `),
+  )!;
+
+it("polls the summary once per 30 seconds, and not while the tab is hidden", async () => {
+  fakePolling();
+  const { summaryCalls } = fakeServers([row(1)]);
+  const { container } = await open("/staff");
+  await seesRows(container, 1);
+  expect(summaryCalls()).toBe(1);
+
+  await poll();
+  expect(summaryCalls()).toBe(2);
+  await poll();
+  expect(summaryCalls()).toBe(3);
+
+  const hidden = vi
+    .spyOn(document, "visibilityState", "get")
+    .mockReturnValue("hidden");
+  await poll();
+  hidden.mockRestore();
+  expect(summaryCalls()).toBe(3);
+});
+
+it("the nav badge and tab title follow the New count, and the title resets on leaving", async () => {
+  fakePolling();
+  const rows = [row(1, { status: "new" }), row(2, { status: "new" }), row(3)];
+  fakeServers(rows);
+  const { container } = await open("/staff");
+  await seesCount(2);
+  const nav = container.querySelector('nav[aria-label="Staff"] a')!;
+  expect(nav.textContent).toBe("Requests2 new");
+
+  rows.push(row(4, { status: "new" }));
+  await poll();
+  await seesCount(3);
+  expect(nav.textContent).toBe("Requests3 new");
+
+  rows.splice(0, 3);
+  rows[0].status = "scheduled";
+  await poll();
+  await seesCount(0);
+  expect(nav.textContent).toBe("Requests");
+
+  rows[0].status = "new";
+  await poll();
+  await seesCount(1);
+  cleanups.splice(0).forEach((cleanup) => cleanup());
+  expect(document.title).toBe("Fixboard");
+});
+
+it("a new request shows the banner, and Show it brings the row in without a reload", async () => {
+  fakePolling();
+  const rows = [row(1)];
+  const { listCalls } = fakeServers(rows);
+  const { container } = await open("/staff");
+  await seesRows(container, 1);
+  await seesCount(0);
+  expect(container.textContent).not.toContain("new request");
+
+  rows.push(row(2, { status: "new" }));
+  await poll();
+  await seesCount(1);
+  expect(container.textContent).toContain("1 new request.");
+  expect(references(container)).toHaveLength(1);
+
+  await click(button(container, "Show it"));
+
+  await seesRows(container, 2);
+  expect(container.textContent).not.toContain("new request");
+  expect(listCalls()).toEqual([`${LIST}?`, `${LIST}?`]);
+});
+
+it("arrivals add up, and a falling count adds nothing and hides nothing", async () => {
+  fakePolling();
+  const rows = [row(1, { status: "new" })];
+  fakeServers(rows);
+  const { container } = await open("/staff");
+  await seesCount(1);
+
+  rows[0].status = "scheduled";
+  await poll();
+  await seesCount(0);
+  expect(container.textContent).not.toContain("new request");
+
+  rows.push(row(2, { status: "new" }));
+  await poll();
+  await seesCount(1);
+  rows.push(row(3, { status: "new" }));
+  await poll();
+  await seesCount(2);
+  expect(container.textContent).toContain("2 new requests.");
+
+  rows[1].status = "scheduled";
+  await poll();
+  await seesCount(1);
+  expect(container.textContent).toContain("2 new requests.");
+  expect(button(container, "Show them")).toBeTruthy();
+});
+
+it("Show it clears a filter that would hide the new request", async () => {
+  fakePolling();
+  const rows = [row(1, { urgent: true })];
+  fakeServers(rows);
+  const { container, router } = await open("/staff?urgent=true");
+  await seesRows(container, 1);
+  await seesCount(0);
+
+  rows.push(row(2, { status: "new" }));
+  await poll();
+  await seesCount(1);
+  await click(button(container, "Show it"));
+
+  expect(router.state.location.search).toBe("");
+  await seesRows(container, 2);
+});
+
+it("each status chip's count matches the list it sets, and clicking again removes it", async () => {
+  const rows = [
+    row(1, { status: "new" }),
+    row(2, { status: "new" }),
+    row(3, { status: "scheduled" }),
+    row(4, { status: "waiting_on_vendor" }),
+    row(5, { status: "done" }),
+    row(6, { status: "done" }),
+    row(7, { status: "done" }),
+  ];
+  fakeServers(rows);
+  const { container, router } = await open("/staff");
+  await seesRows(container, 4);
+  await seesCount(2);
+
+  for (const [label, status, count] of [
+    ["New", "new", 2],
+    ["Scheduled", "scheduled", 1],
+    ["Waiting on vendor", "waiting_on_vendor", 1],
+    ["Done", "done", 3],
+  ] as const) {
+    expect(chip(container, label).textContent).toBe(`${label} ${count}`);
+    await click(chip(container, label));
+    expect(router.state.location.search).toBe(`?status=${status}`);
+    await seesRows(container, count);
+    expect(chip(container, label).getAttribute("aria-pressed")).toBe("true");
+  }
+
+  await click(chip(container, "Done"));
+  expect(router.state.location.search).toBe("");
+  await seesRows(container, 4);
+});
+
+it("the open urgent and needs-review counts leave out Done", async () => {
+  fakeServers([
+    row(1, { urgent: true, needs_review: true }),
+    row(2, { urgent: true }),
+    row(3, { status: "done", urgent: true, needs_review: true }),
+  ]);
+  const { container } = await open("/staff");
+
+  await vi.waitFor(() =>
+    expect(container.textContent).toContain("Open urgent 2"),
+  );
+  expect(container.textContent).toContain("Needs review 1");
+});
+
+it("a failed summary leaves the list working, with no counts", async () => {
+  const { summaryCalls } = fakeServers([row(1)], undefined, () =>
+    json({ error: { code: "service_unavailable" } }, 503),
+  );
+  const { container } = await open("/staff");
+  await seesRows(container, 1);
+  await vi.waitFor(() => expect(summaryCalls()).toBe(1));
+
+  expect(container.querySelector('[aria-label="Request counts"]')).toBeNull();
+  expect(document.title).toBe("Fixboard");
 });
