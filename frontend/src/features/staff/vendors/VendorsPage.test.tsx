@@ -270,9 +270,11 @@ it("shows a duplicate name inline, and an empty one before sending", async () =>
   expect(input.getAttribute("aria-invalid")).toBe("true");
   expect(document.activeElement).toBe(input);
 
-  // Typing clears it.
+  // Typing clears it. The mutation's reset reaches React on a timer, after act.
   await change(input, "Plumber 2");
-  expect(container.textContent).not.toContain("already has this name");
+  await vi.waitFor(() =>
+    expect(container.textContent).not.toContain("already has this name"),
+  );
 });
 
 it("renames inline, and the new name shows in the picker and on an old request", async () => {
