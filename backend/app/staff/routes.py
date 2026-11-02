@@ -138,8 +138,10 @@ def get_photo_url(request_id: int, photo_id: int, db: Db):
 
 
 @router.get("/assignees", response_model=list[AssigneeOut])
-def list_assignees(db: Db):
-    return db.scalars(select(Assignee).where(Assignee.active).order_by(Assignee.name)).all()
+def list_assignees(db: Db, include_inactive: bool = False):
+    # Inactive entries are for the vendor page, where staff bring them back. Pickers leave them out.
+    query = select(Assignee).order_by(Assignee.name)
+    return db.scalars(query if include_inactive else query.where(Assignee.active)).all()
 
 
 def _save_assignee(
