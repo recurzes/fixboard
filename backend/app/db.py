@@ -24,7 +24,13 @@ class Base(DeclarativeBase):
 
 
 # hide_parameters keeps tenant data out of SQL errors, and so out of logs and Sentry.
-engine = create_engine(settings.database_url, pool_pre_ping=True, hide_parameters=True)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    hide_parameters=True,
+    # psycopg's default is about two minutes, which would hold a worker thread through an outage.
+    connect_args={"connect_timeout": 10},
+)
 SessionLocal = sessionmaker(engine, expire_on_commit=False)
 
 
