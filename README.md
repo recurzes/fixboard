@@ -6,7 +6,7 @@ A maintenance request tool for a rental company of about 75 units. Tenants submi
 
 Backend only, and still in progress:
 
-- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list, and an append-only history of who changed what.
+- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list, an append-only history of who changed what, and privacy hardening.
 - **Not built yet:** the frontend.
 
 ## Stack
@@ -27,6 +27,7 @@ Set these values in `backend/.env`:
 
 ```sh
 DATABASE_URL=postgresql+psycopg://fixboard:fixboard@localhost:5432/fixboard
+APP_ORIGIN=http://localhost:3000
 NEON_AUTH_URL=https://test.neon.invalid/neondb/auth
 STORAGE_ENDPOINT_URL=http://127.0.0.1:9100
 STORAGE_BUCKET=photos
@@ -55,7 +56,7 @@ Check it at <http://localhost:8000/health>.
 
 **Check `DATABASE_URL` before running migrations or seed scripts.** They change whichever database it points to, so if `backend/.env` holds your Neon URL, they run against Neon.
 
-To run the backend in Docker instead, set `NEON_AUTH_URL` and the `STORAGE_*` values in your shell, because the container does not read `backend/.env`. Compose does not run migrations, so run them yourself:
+To run the backend in Docker instead, set `APP_ORIGIN`, `NEON_AUTH_URL`, and the `STORAGE_*` values in your shell, because the container does not read `backend/.env`. Compose does not run migrations, so run them yourself:
 
 ```sh
 docker compose up -d --build
@@ -106,6 +107,7 @@ Settings come from environment variables or `backend/.env`. See `backend/.env.ex
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | Yes | | Postgres URL using the psycopg driver. On Neon, use the direct host, not `-pooler` |
+| `APP_ORIGIN` | Yes | | The frontend's exact origin, such as `https://app.example.com`, and the only one CORS allows. A wildcard, a list, or a trailing slash stops the app from starting |
 | `NEON_AUTH_URL` | Yes | | Base URL of Neon Auth |
 | `NEON_API_KEY`, `NEON_PROJECT_ID`, `NEON_BRANCH_ID` | Staff script only | | Creates staff accounts. The key gives admin access, so never commit it |
 | `STORAGE_ENDPOINT_URL`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | Yes | | The S3-compatible photo bucket. It must be private, and the secret key stays on the server |
@@ -205,7 +207,14 @@ The request detail includes `history`, newest first. Each event has `event` (`cr
 
 The database refuses `UPDATE` and `DELETE` on the history table, so events written to any database are permanent, including test ones.
 
-Errors look like `{ "error": { "code", "message" } }`, and a 422 also lists `fields`. When the form is closed, the response is a 503 with the code `form_closed`. When photo storage is down, it is a 503 with the code `service_unavailable`.
+Errors look like `{ "error": { "code", "message" } }`, and a 422 also lists `fields`. When the form is closed, the response is a 503 with the code `form_closed`. When photo storage is down, it is a 503 with the code `service_unavailable`. A body over 52 MB, which is 5 photos at 10 MB each plus 2 MB for the form fields, gets a 413.
+
+## Privacy protections
+
+- **Routes:** a test lists every route and fails on any public one outside the API table above. `/docs`, `/redoc`, and `/openapi.json` are turned off for the same reason.
+- **Row-level security:** on for every table, with no policies. Only the role that owns the tables can see rows, so **the backend must connect as the role that ran the migrations**. Any other role gets nothing. A new table needs its own `ENABLE ROW LEVEL SECURITY` in its migration, and a test fails without it.
+- **Browsers:** CORS allows only `APP_ORIGIN`. Every response that passes through the app's middleware sends `Referrer-Policy: no-referrer`. The frontend must send the same header on its own pages, because those are the pages that load signed photo links.
+- **Logs and Sentry:** Postgres error details are removed at the database engine, because they repeat whole rows. Tests check logs and Sentry events after successful and failed submits.
 
 ## Tests
 

@@ -10,6 +10,7 @@ jobs:
         working-directory: backend
     env:
       DATABASE_URL: postgresql+psycopg://fixboard:fixboard@localhost:5432/fixboard
+      APP_ORIGIN: https://app.test.invalid
       NEON_AUTH_URL: https://test.neon.invalid/neondb/auth
       STORAGE_ENDPOINT_URL: https://storage.test.invalid
       STORAGE_BUCKET: photos
