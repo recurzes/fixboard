@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { initialFormState } from "./formState";
-import { validateStep1 } from "./validation";
+import type { Category } from "./usePublicConfig";
+import { validateStep1, validateStep2 } from "./validation";
 
 const valid = {
   ...initialFormState.fields,
@@ -46,4 +47,39 @@ it("names the missing contact in the words the spec asks for", () => {
   expect(validateStep1({ ...valid, phone: "", email: "" }).phone).toBe(
     "Phone or email is required",
   );
+});
+
+const question = (id: string, required: boolean) => ({
+  id,
+  label: id,
+  type: "text" as const,
+  required,
+  options: [],
+});
+const CATEGORIES: Category[] = [
+  {
+    id: "other",
+    label: "Other",
+    questions: [question("needed", true), question("extra", false)],
+  },
+];
+const step2 = (followup_answers: Record<string, string>, category = "other") =>
+  validateStep2(
+    { ...initialFormState.fields, category, followup_answers },
+    CATEGORIES,
+  );
+
+it("refuses a step with no category", () => {
+  expect(Object.keys(step2({}, ""))).toEqual(["category"]);
+});
+
+it.each([
+  ["missing", {}],
+  ["blank", { needed: "   " }],
+])("a %s required answer blocks", (_name, answers) => {
+  expect(Object.keys(step2(answers))).toEqual(["needed"]);
+});
+
+it("a missing optional answer does not block", () => {
+  expect(step2({ needed: "yes" })).toEqual({});
 });
