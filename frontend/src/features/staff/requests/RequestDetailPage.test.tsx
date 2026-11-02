@@ -227,7 +227,7 @@ it("the header shows the reference and badges, and the tenant's contact links", 
   expect(facts(container)).toEqual(
     expect.arrayContaining([
       "Property and unit: Palm Court · U3",
-      "Source: In person",
+      "Source: Walk-in",
     ]),
   );
 });

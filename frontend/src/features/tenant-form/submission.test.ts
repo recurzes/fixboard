@@ -1,14 +1,22 @@
 import { expect, it } from "vitest";
 import formConfig from "../../../../backend/app/intake/form_config.json";
-import { formReducer, initialFormState } from "./formState";
-import type { FormAction, FormFields, FormState } from "./formState";
+import { formReducer, initialFormState } from "../../shared/form/formState";
+import type {
+  FormAction,
+  FormFields,
+  FormState,
+} from "../../shared/form/formState";
 import {
   buildSubmission,
   newIdempotencyKey,
   placeFieldErrors,
 } from "./submission";
-import type { Category } from "./usePublicConfig";
-import { validateStep1, validateStep2, validateStep3 } from "./validation";
+import type { Category } from "../../shared/form/usePublicConfig";
+import {
+  validateStep1,
+  validateStep2,
+  validateStep3,
+} from "../../shared/form/validation";
 
 // The categories walked below all have options, which is what the server's defaults would add.
 const categories = formConfig.categories as unknown as Category[];
