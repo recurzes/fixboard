@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = Field(min_length=1)
+    # One exact origin. A wildcard would open CORS, and a trailing slash would never match.
+    app_origin: str = Field(pattern=r"^https?://[^/*,\s]+$")
     neon_auth_url: str = Field(min_length=1)
     neon_api_key: str | None = None
     neon_project_id: str | None = None
