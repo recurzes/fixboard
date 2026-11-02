@@ -100,7 +100,7 @@ CSV columns:
 
 The roster is personal data. Git and Docker builds ignore `*.csv` files, so keep it that way.
 
-The staff script also needs `NEON_API_KEY`, `NEON_PROJECT_ID`, and `NEON_BRANCH_ID`. Neon's API takes no password, so new staff set theirs through the forgot-password flow.
+The staff script also needs `NEON_API_KEY`, `NEON_PROJECT_ID`, and `NEON_BRANCH_ID`. Neon's API takes no password, so new staff set theirs at `/staff/forgot-password`, which emails them a link to `/staff/reset-password`.
 
 ## Demo data
 
