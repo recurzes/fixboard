@@ -134,7 +134,7 @@ afterEach(async () => {
   await signOut();
 });
 
-async function open() {
+async function open(ready = "Electrician") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -155,7 +155,7 @@ async function open() {
     act(() => root.unmount());
     container.remove();
   });
-  await sees(container, "Electrician");
+  await sees(container, ready);
   return { container, router };
 }
 
@@ -233,6 +233,14 @@ it("lists the five seeded entries with kind and state, and In-house maintenance 
   expect(container.textContent).toContain(
     "Locked. In-house maintenance can't be deactivated",
   );
+});
+
+it("says so when there are no entries at all", async () => {
+  const server = fakeServer();
+  server.assignees = [];
+  const { container } = await open("No vendors yet");
+
+  expect(container.querySelector("table")).toBeNull();
 });
 
 it("adds an outside vendor, which then shows in the assignee picker", async () => {

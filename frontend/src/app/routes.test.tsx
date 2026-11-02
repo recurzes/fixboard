@@ -11,14 +11,14 @@ import { routes } from "./routes";
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
 it.each([
-  ["/", "Report a maintenance problem"],
-  ["/done", "Thank you"],
-  ["/staff/login", "Staff sign in"],
-  ["/staff", "Staff sign in"],
-  ["/staff/requests/1", "Staff sign in"],
-  ["/nope", "Page not found"],
-  ["/dev/ui", "UI demo"],
-])("%s signed out shows %s", async (url, heading) => {
+  ["/", "Report a maintenance problem", "Report a problem – Fixboard"],
+  ["/done", "Thank you", "Request sent – Fixboard"],
+  ["/staff/login", "Staff sign in", "Staff sign in – Fixboard"],
+  ["/staff", "Staff sign in", "Staff sign in – Fixboard"],
+  ["/staff/requests/1", "Staff sign in", "Staff sign in – Fixboard"],
+  ["/nope", "Page not found", "Page not found – Fixboard"],
+  ["/dev/ui", "UI demo", "Fixboard"],
+])("%s signed out shows %s", async (url, heading, title) => {
   const noSession = vi.fn(async () => new Response("{}", { status: 401 }));
   vi.stubGlobal("fetch", noSession);
   const container = document.createElement("div");
@@ -33,6 +33,7 @@ it.each([
   await vi.waitFor(() =>
     expect(container.querySelector("h1")?.textContent).toBe(heading),
   );
+  expect(document.title).toBe(title);
   // Tenant pages must not depend on, or call, the sign-in service.
   if (!url.startsWith("/staff")) {
     expect(JSON.stringify(noSession.mock.calls)).not.toContain(

@@ -141,7 +141,7 @@ afterEach(async () => {
   await signOut();
 });
 
-async function open() {
+async function open(ready = "How did it come in?") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -162,7 +162,7 @@ async function open() {
     act(() => root.unmount());
     container.remove();
   });
-  await sees(container, "How did it come in?");
+  await sees(container, ready);
   return { container, router };
 }
 
@@ -248,6 +248,23 @@ it("checks every required field, Source included, before sending", async () => {
   }
   expect(document.activeElement).toBe(radio(container, "phone"));
   expect(server.posts).toEqual([]);
+  expect(container.querySelector('form [role="alert"]')!.textContent).toMatch(
+    /^7 problems:/,
+  );
+});
+
+it("offers Retry when the form can't load, with no tenant number to call", async () => {
+  fakeServer();
+  const inner = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url, init) =>
+    url === `${API}/api/public/config`
+      ? json({ error: { code: "service_unavailable" } }, 503)
+      : inner(url as never, init as never),
+  );
+  const { container } = await open("We can't load the form right now.");
+
+  expect(button(container, "Retry")).toBeDefined();
+  expect(container.querySelector('a[href^="tel:"]')).toBeNull();
 });
 
 it("leaves out the honeypot, the emergency tick, the privacy notice, the self-check, and the call-us callout", async () => {

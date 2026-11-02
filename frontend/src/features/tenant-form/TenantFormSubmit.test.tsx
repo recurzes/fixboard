@@ -473,3 +473,44 @@ it("copies the number, and says so if the browser can't", async () => {
   vi.unstubAllGlobals();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 });
+
+// F110: the browser half of tenant privacy. The Sentry scrub has its own test in sentry.test.ts.
+it("keeps typed values and the number out of storage, the console, and the URL", async () => {
+  const methods = ["log", "info", "warn", "error", "debug"] as const;
+  const spies = methods.map((method) => vi.spyOn(console, method));
+  cleanups.push(() => spies.forEach((spy) => spy.mockRestore()));
+  // A failure first, so the error paths are covered too.
+  fakeApi([
+    () => {
+      throw new TypeError("Failed to fetch");
+    },
+  ]);
+  const { container, router } = await ready();
+  // Every address, because the confirmation page replaces its own and would hide an earlier one.
+  const visited = [router.state.location];
+  cleanups.push(router.subscribe(({ location }) => visited.push(location)));
+  await submit(container);
+  await vi.waitFor(() => expect(button(container, "Try again")).toBeDefined());
+  await submit(container, "Try again");
+  await vi.waitFor(() => expect(container.textContent).toContain("MR-1001"));
+
+  const secrets = ["sam@example.com", "It drips", "MR-1001"];
+  // Neon Auth keeps its session in a cookie, so nothing should be stored at all.
+  const stored = JSON.stringify({ ...localStorage, ...sessionStorage });
+  const logged = JSON.stringify(
+    spies.flatMap((spy) => spy.mock.calls),
+    (_, value) => (value instanceof Error ? value.message : value),
+  );
+  // Router state counts: browsers keep it through a refresh.
+  const address = JSON.stringify([visited.at(-1), window.location.href]);
+  const paths = JSON.stringify(
+    visited.map(({ pathname, search, hash }) => pathname + search + hash),
+  );
+  for (const secret of secrets) {
+    expect(stored).not.toContain(secret);
+    expect(logged).not.toContain(secret);
+    expect(address).not.toContain(secret);
+    expect(paths).not.toContain(secret);
+    expect(document.title).not.toContain(secret);
+  }
+});

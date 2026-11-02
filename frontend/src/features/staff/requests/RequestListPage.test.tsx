@@ -569,7 +569,9 @@ const poll = () =>
 
 const seesCount = (count: number) =>
   vi.waitFor(() =>
-    expect(document.title).toBe(count ? `(${count}) Fixboard` : "Fixboard"),
+    expect(document.title).toBe(
+      `${count ? `(${count}) ` : ""}Requests – Fixboard`,
+    ),
   );
 
 const chip = (container: HTMLElement, label: string) =>
@@ -601,7 +603,7 @@ it("the nav badge and tab title follow the New count, and the title resets on le
   fakePolling();
   const rows = [row(1, { status: "new" }), row(2, { status: "new" }), row(3)];
   fakeServers(rows);
-  const { container } = await open("/staff");
+  const { container, router } = await open("/staff");
   await seesCount(2);
   const nav = container.querySelector('nav[aria-label="Staff"] a')!;
   expect(nav.textContent).toBe("Requests2 new");
@@ -620,8 +622,10 @@ it("the nav badge and tab title follow the New count, and the title resets on le
   rows[0].status = "new";
   await poll();
   await seesCount(1);
-  cleanups.splice(0).forEach((cleanup) => cleanup());
-  expect(document.title).toBe("Fixboard");
+  await act(async () => router.navigate("/"));
+  await vi.waitFor(() =>
+    expect(document.title).toBe("Report a problem – Fixboard"),
+  );
 });
 
 it("a new request shows the banner, and Show it brings the row in without a reload", async () => {
@@ -746,5 +750,5 @@ it("a failed summary leaves the list working, with no counts", async () => {
   await vi.waitFor(() => expect(summaryCalls()).toBe(1));
 
   expect(container.querySelector('[aria-label="Request counts"]')).toBeNull();
-  expect(document.title).toBe("Fixboard");
+  expect(document.title).toBe("Requests – Fixboard");
 });
