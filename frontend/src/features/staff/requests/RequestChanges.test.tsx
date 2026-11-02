@@ -60,13 +60,33 @@ const detail = (change: Partial<RequestDetail> = {}): RequestDetail => ({
   ...change,
 });
 
-/** A small stand-in for the backend: checks updated_at, and moves Waiting on vendor off a non-vendor. */
+/** A small stand-in for the backend: checks updated_at, moves Waiting on vendor off a non-vendor, and keeps history newest first. */
 function fakeServer(start: RequestDetail) {
   const server = {
     request: start,
     patches: [] as Record<string, unknown>[],
     notes: [] as unknown[],
     saves: 0,
+  };
+  const event = (
+    kind: string,
+    field: string | null = null,
+    old: unknown = null,
+    next: unknown = null,
+  ) => {
+    const count = server.request.history.length;
+    server.request.history = [
+      {
+        id: count + 1,
+        event: kind,
+        field,
+        old_value: old === null ? null : String(old),
+        new_value: next === null ? null : String(next),
+        actor_name: "Sam Lee",
+        created_at: `2026-11-02T15:0${count}:00Z`,
+      },
+      ...server.request.history,
+    ];
   };
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
@@ -93,6 +113,11 @@ function fakeServer(start: RequestDetail) {
         author_name: "Sam Lee",
         created_at: "2026-11-02T15:00:00Z",
       };
+      server.request = {
+        ...server.request,
+        notes: [...server.request.notes, note],
+      };
+      event("note_added");
       return json(note, 201);
     }
     if (url === `${LIST}/7` && method === "PATCH") {
@@ -118,7 +143,16 @@ function fakeServer(start: RequestDetail) {
       }
       server.saves += 1;
       next.updated_at = `2026-11-02T10:00:0${server.saves}.654321Z`;
+      const before = server.request;
       server.request = next;
+      for (const key of ["status", "scheduled_at", "needs_review"] as const) {
+        if (before[key] !== next[key]) {
+          event("changed", key, before[key], next[key]);
+        }
+      }
+      if (before.assignee_id !== next.assignee_id) {
+        event("changed", "assignee", before.assignee_name, next.assignee_name);
+      }
       return json(next);
     }
     if (url === `${LIST}/7`) return json(server.request);
@@ -173,6 +207,14 @@ const button = (container: HTMLElement, name: string) =>
   [...container.querySelectorAll("button")].find(
     ({ textContent }) => textContent === name,
   )!;
+
+/** The list items in the section with this heading. */
+const items = (container: HTMLElement, title: string) =>
+  [
+    ...[...container.querySelectorAll("section")]
+      .find((section) => section.querySelector("h2")?.textContent === title)!
+      .querySelectorAll("li"),
+  ].map((item) => item.textContent!.replace(/\s/g, " "));
 
 const click = (element: Element) =>
   act(async () => (element as HTMLElement).click());
@@ -446,15 +488,40 @@ it("a new note appears with its author and time after saving", async () => {
   await sees(container, "Plumber booked for Thursday.");
 
   expect(server.notes).toEqual([{ body: "Plumber booked for Thursday." }]);
-  const items = [...container.querySelectorAll("li")].map((item) =>
-    item.textContent!.replace(/\s/g, " "),
-  );
-  expect(items).toEqual([
+  expect(items(container, "Notes")).toEqual([
     "Kim Park · 11/01/2026, 9:00 AMCalled the tenant.",
     "Sam Lee · 11/02/2026, 10:00 AMPlumber booked for Thursday.",
   ]);
   expect(box.value).toBe("");
   expect(container.textContent).toContain("Note added");
+});
+
+it("three changes read back as who did what and when, newest first, without a reload", async () => {
+  fakeServer(detail());
+  const { container, router } = await open("/staff/requests/7");
+  await sees(container, "No history yet.");
+  await vi.waitFor(() =>
+    expect(select(container, "Assignee").options).toHaveLength(6),
+  );
+
+  await change(select(container, "Assignee"), "4");
+  await click(button(container, "Save changes"));
+  await sees(container, "Sam Lee assigned it to Plumber");
+
+  await change(select(container, "Status"), "scheduled");
+  await click(button(container, "Save changes"));
+  await sees(container, "Sam Lee changed status from New to Scheduled");
+
+  await change(field<HTMLTextAreaElement>(container, "Add a note"), "Booked.");
+  await click(button(container, "Add note"));
+  await sees(container, "Sam Lee added a note");
+
+  expect(items(container, "History")).toEqual([
+    "Sam Lee added a note11/02/2026, 10:02 AM",
+    "Sam Lee changed status from New to Scheduled11/02/2026, 10:01 AM",
+    "Sam Lee assigned it to Plumber11/02/2026, 10:00 AM",
+  ]);
+  expect(router.state.location.pathname).toBe("/staff/requests/7");
 });
 
 it("leaving with unsaved edits asks first, and staying keeps them", async () => {

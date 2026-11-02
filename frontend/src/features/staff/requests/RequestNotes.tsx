@@ -31,6 +31,10 @@ export function RequestNotes({
         ["staff", "request", id],
         (request) => request && { ...request, notes: [...request.notes, note] },
       );
+      // The response has no history, so reload for the "added a note" event.
+      void queryClient.invalidateQueries({
+        queryKey: ["staff", "request", id],
+      });
       setBody("");
       showToast("Note added");
     },

@@ -388,11 +388,12 @@ it("Back after a search puts the older text back in the box", async () => {
     expect(router.state.location.search).toBe("?urgent=true&q=mr-1001"),
   );
 
+  // Back returns no promise, so act can end before the re-render.
   await act(async () => router.navigate(-1));
 
   const input = container.querySelector<HTMLInputElement>('input[name="q"]')!;
   expect(router.state.location.search).toBe("");
-  expect(input.value).toBe("");
+  await vi.waitFor(() => expect(input.value).toBe(""));
 });
 
 it("Load more walks 60 rows over three pages with no repeats, then goes away", async () => {

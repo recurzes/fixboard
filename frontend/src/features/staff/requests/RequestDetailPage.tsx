@@ -18,6 +18,7 @@ import { usePublicConfig } from "../../../shared/form/usePublicConfig";
 import type { PublicConfig } from "../../../shared/form/usePublicConfig";
 import { RequestBadges } from "./RequestBadges";
 import { RequestChanges, useRequestChanges } from "./RequestChanges";
+import { RequestHistory } from "./RequestHistory";
 import { RequestNotes } from "./RequestNotes";
 import { RequestPhotos } from "./RequestPhotos";
 import { isNotFound, SOURCE_LABELS, useRequest } from "./useRequest";
@@ -265,6 +266,9 @@ function Detail({ id, request }: { id: string; request: RequestDetail }) {
           </Section>
           <Section title="Notes">
             <RequestNotes id={id} notes={request.notes} showToast={showToast} />
+          </Section>
+          <Section title="History">
+            <RequestHistory history={request.history} />
           </Section>
         </div>
       </div>

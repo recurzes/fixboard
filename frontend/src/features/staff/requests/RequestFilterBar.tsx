@@ -20,7 +20,6 @@ function SearchBox({
 }) {
   const [text, setText] = useState(value);
   const [synced, setSynced] = useState(value);
-  // shortcut: a key pressed in the moment the URL updates can be lost, upgrade if anyone sees it.
   if (value !== synced) {
     // Back and Clear filters change the URL with no typing.
     setSynced(value);
@@ -29,7 +28,11 @@ function SearchBox({
 
   useEffect(() => {
     if (text.trim() === value) return;
-    const timer = setTimeout(() => onChange(text.trim()), SEARCH_DELAY_MS);
+    const timer = setTimeout(() => {
+      // Set now, not when the URL renders: a Back before that render would otherwise look like no change.
+      setSynced(text.trim());
+      onChange(text.trim());
+    }, SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
   }, [text, value, onChange]);
 
