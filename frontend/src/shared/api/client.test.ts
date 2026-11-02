@@ -1,4 +1,5 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getToken, refreshToken, signOut } from "../lib/auth";
 import { apiFetch, ApiError } from "./client";
 
 function respondWith(body: string, status = 200) {
@@ -97,5 +98,135 @@ it("times out, and lets a caller set the time", async () => {
   expect(await failure(apiFetch("/api/x", { timeoutMs: 5 }))).toMatchObject({
     status: 0,
     code: "timeout",
+  });
+});
+
+describe("staff calls", () => {
+  const TOKEN_URL = "https://auth.test.invalid/token";
+  const SIGN_OUT_URL = "https://auth.test.invalid/sign-out";
+
+  /** Answers the API with `api` in order, the last one repeating, and hands out fresh-1, fresh-2, and so on. */
+  function backend(api: number[], tokenStatus = 200) {
+    const statuses = [...api];
+    let issued = 0;
+    const fetchMock = vi.fn<
+      (url: string, init?: RequestInit) => Promise<Response>
+    >(async (url) => {
+      if (url === TOKEN_URL) {
+        return new Response(JSON.stringify({ token: `fresh-${++issued}` }), {
+          status: tokenStatus,
+        });
+      }
+      if (url === SIGN_OUT_URL) return new Response("{}");
+      const status = statuses.length > 1 ? statuses.shift()! : statuses[0];
+      return new Response(status === 200 ? '{"ok":true}' : "{}", { status });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return {
+      calls: (url: string) =>
+        fetchMock.mock.calls.filter(([called]) => called === url).length,
+      bearers: () =>
+        fetchMock.mock.calls
+          .filter(([url]) => url.includes("/api/"))
+          .map(
+            ([, init]) =>
+              (init?.headers as Record<string, string>)?.Authorization,
+          ),
+    };
+  }
+
+  const signedIn = async () => {
+    backend([200]);
+    await refreshToken();
+    expect(getToken()).toBe("fresh-1");
+  };
+
+  afterEach(async () => {
+    backend([200]);
+    await signOut();
+  });
+
+  it("adds the token to staff calls and never to public ones", async () => {
+    await signedIn();
+    const { bearers } = backend([200]);
+
+    await apiFetch("/api/staff/me");
+    await apiFetch("/api/public/properties");
+
+    expect(bearers()).toEqual(["Bearer fresh-1", undefined]);
+  });
+
+  it("an expired token triggers one refresh and one retry", async () => {
+    await signedIn();
+    const { calls, bearers } = backend([401, 200]);
+
+    await expect(apiFetch("/api/staff/me")).resolves.toEqual({ ok: true });
+
+    expect(calls(TOKEN_URL)).toBe(1);
+    expect(bearers()).toEqual(["Bearer fresh-1", "Bearer fresh-1"]);
+    expect(calls(SIGN_OUT_URL)).toBe(0);
+  });
+
+  it("a second 401 signs out, and refreshes no further", async () => {
+    await signedIn();
+    const { calls } = backend([401]);
+
+    expect(await failure(apiFetch("/api/staff/me"))).toMatchObject({
+      status: 401,
+    });
+
+    expect(calls(TOKEN_URL)).toBe(1);
+    expect(calls(SIGN_OUT_URL)).toBe(1);
+    expect(getToken()).toBeNull();
+  });
+
+  it("a session that ended fails without a retry", async () => {
+    await signedIn();
+    const { calls, bearers } = backend([401], 401);
+
+    expect(await failure(apiFetch("/api/staff/me"))).toMatchObject({
+      status: 401,
+    });
+
+    expect(bearers()).toHaveLength(1);
+    expect(calls(TOKEN_URL)).toBe(1);
+    expect(getToken()).toBeNull();
+  });
+
+  it("calls that fail together share one refresh", async () => {
+    await signedIn();
+    const { calls } = backend([401, 401, 200]);
+
+    await Promise.all([apiFetch("/api/staff/a"), apiFetch("/api/staff/b")]);
+
+    expect(calls(TOKEN_URL)).toBe(1);
+  });
+
+  it("a 503 from the API signs nobody out", async () => {
+    await signedIn();
+    const { calls } = backend([503]);
+
+    expect(await failure(apiFetch("/api/staff/me"))).toMatchObject({
+      status: 503,
+    });
+
+    expect(calls(TOKEN_URL)).toBe(0);
+    expect(getToken()).toBe("fresh-1");
+  });
+
+  it.each([
+    ["is down", 500],
+    ["rate limits", 429],
+  ])("signs nobody out when Neon %s during a refresh", async (_, status) => {
+    await signedIn();
+    const { calls } = backend([401], status);
+
+    expect(await failure(apiFetch("/api/staff/me"))).toMatchObject({
+      status: 0,
+      code: "network_error",
+    });
+
+    expect(calls(SIGN_OUT_URL)).toBe(0);
+    expect(getToken()).toBe("fresh-1");
   });
 });

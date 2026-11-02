@@ -18,6 +18,8 @@ How to deploy, roll back, refresh the roster, and find out what broke. Setup and
    neon neon-auth config email-password update --disable-sign-up
    ```
 
+   Add the frontend's origin to Neon Auth's trusted domains, or sign-in and password emails are refused. Safari blocks the session cookie while the frontend and Neon Auth are on different sites, so staff on iPhones can't stay signed in until the auth URL is served from the frontend's own site (F111).
+
 2. **Bucket:** create it and set it private on the provider. Afterwards, opening a file's plain URL must be refused.
 3. **Dokploy:** create an application from this repo, built from `backend/Dockerfile` with `backend` as the build context. Set a restart policy, and publish no ports.
 4. **Environment:** set these in Dokploy. The README's configuration table explains each one.
