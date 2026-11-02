@@ -7,6 +7,7 @@ import { Button } from "../shared/ui/Button";
 import { Checkbox, RadioGroup } from "../shared/ui/Choice";
 import { Alert, Badge, EmptyState, Spinner } from "../shared/ui/Feedback";
 import { Select, Textarea, TextInput } from "../shared/ui/Field";
+import { Modal } from "../shared/ui/Modal";
 
 const OPTIONS = [
   { value: "a", label: "First option" },
@@ -29,6 +30,7 @@ export function UiDemo() {
   const [radio, setRadio] = useState("a");
   const [box, setBox] = useState(false);
   const [phone, setPhone] = useState("");
+  const [modal, setModal] = useState(false);
   return (
     <main className="mx-auto max-w-lg space-y-8 p-4">
       <h1 className="text-2xl font-bold">UI demo</h1>
@@ -137,6 +139,14 @@ export function UiDemo() {
           <Badge tone="error">Error</Badge>
           <Badge tone="strong">Strong</Badge>
         </div>
+      </Section>
+
+      <Section title="Modal">
+        <Button onClick={() => setModal(true)}>Open modal</Button>
+        <Modal open={modal} onClose={() => setModal(false)} title="A modal">
+          <p className="mb-3">Tab stays inside. Esc closes it.</p>
+          <Button onClick={() => setModal(false)}>Done</Button>
+        </Modal>
       </Section>
 
       <Section title="Formats and config">

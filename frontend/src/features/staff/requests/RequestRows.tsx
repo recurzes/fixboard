@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { formatDateTime } from "../../../shared/lib/dates";
 import { usePublicConfig } from "../../tenant-form/usePublicConfig";
 import { RequestBadges } from "./RequestBadges";
@@ -25,6 +25,8 @@ const assignee = (request: RequestRow) => request.assignee_name ?? "Unassigned";
 /** Both layouts stay in the page and CSS shows one, so each row's data has one source. */
 export function RequestRows({ rows }: { rows: RequestRow[] }) {
   const config = usePublicConfig();
+  // The detail page's Back link returns to this exact filtered list.
+  const listState = { listSearch: useLocation().search };
   // The label comes from the config, and a retired category still has its id to show.
   const categoryLabel = (id: string) =>
     config.data?.categories.find((category) => category.id === id)?.label ?? id;
@@ -55,6 +57,7 @@ export function RequestRows({ rows }: { rows: RequestRow[] }) {
                 {/* The link stretches over the row, so it is one tab stop and opens in a new tab. */}
                 <Link
                   to={`/staff/requests/${request.id}`}
+                  state={listState}
                   className="text-blue-800 underline outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-blue-700"
                 >
                   {request.reference_number}
@@ -77,6 +80,7 @@ export function RequestRows({ rows }: { rows: RequestRow[] }) {
           <li key={request.id}>
             <Link
               to={`/staff/requests/${request.id}`}
+              state={listState}
               className={`block space-y-1 rounded-lg border border-gray-400 p-3 break-words hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${request.status === "new" ? accentBar(request) : ""} ${weight(request)}`}
             >
               <span className="block text-blue-800 underline">
