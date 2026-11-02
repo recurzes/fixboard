@@ -100,6 +100,7 @@ function fakeServers(
       return json({ categories: CATEGORIES });
     }
     if (url === `${API}/api/public/properties`) return json([]);
+    if (url === `${API}/api/staff/assignees`) return json([]);
     if (url === `${LIST}/summary`) {
       return json({
         by_status: { new: 0, scheduled: 0, waiting_on_vendor: 0, done: 0 },

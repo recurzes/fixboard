@@ -8,6 +8,7 @@ import { Checkbox, RadioGroup } from "../shared/ui/Choice";
 import { Alert, Badge, EmptyState, Spinner } from "../shared/ui/Feedback";
 import { Select, Textarea, TextInput } from "../shared/ui/Field";
 import { Modal } from "../shared/ui/Modal";
+import { Toast, useToast } from "../shared/ui/Toast";
 
 const OPTIONS = [
   { value: "a", label: "First option" },
@@ -31,6 +32,7 @@ export function UiDemo() {
   const [box, setBox] = useState(false);
   const [phone, setPhone] = useState("");
   const [modal, setModal] = useState(false);
+  const [toast, showToast] = useToast();
   return (
     <main className="mx-auto max-w-lg space-y-8 p-4">
       <h1 className="text-2xl font-bold">UI demo</h1>
@@ -147,6 +149,16 @@ export function UiDemo() {
           <p className="mb-3">Tab stays inside. Esc closes it.</p>
           <Button onClick={() => setModal(false)}>Done</Button>
         </Modal>
+      </Section>
+
+      <Section title="Toast">
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => showToast("Saved")}>Show Saved</Button>
+          <Button onClick={() => showToast("Couldn't save.", "error")}>
+            Show error
+          </Button>
+        </div>
+        <Toast toast={toast} />
       </Section>
 
       <Section title="Formats and config">
