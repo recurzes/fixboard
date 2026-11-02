@@ -7,11 +7,13 @@ A maintenance request tool for a rental company of about 75 units. Tenants submi
 The backend is finished and ready to deploy, but has not run in production yet. To deploy or operate it, see the [runbook](RUNBOOK.md).
 
 - **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list, an append-only history of who changed what, privacy hardening, readiness checks, a smoke test, and demo data.
-- **Not built yet:** the frontend.
+- **Not built yet:** the frontend's screens. `frontend/` has the app setup: routes with placeholder pages, the API client, and Sentry.
 
 ## Stack
 
 Python 3.13, FastAPI, SQLAlchemy 2, Alembic, and Postgres. Production uses Neon for the database and staff sign-in. Local development and CI use Postgres in Docker. Photos go to a private S3-compatible bucket.
+
+The frontend is React, TypeScript, Vite, Tailwind, React Router, and TanStack Query.
 
 ## Run it locally
 
@@ -53,6 +55,15 @@ uv run uvicorn app.main:app --reload
 ```
 
 Check it at <http://localhost:8000/health>.
+
+To run the frontend, you need Node 24. Copy `.env.example` to `.env` and set `VITE_NEON_AUTH_URL`. It serves on <http://localhost:3000>, the `APP_ORIGIN` above:
+
+```sh
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
 
 **Check `DATABASE_URL` before running migrations or seed scripts.** They change whichever database it points to, so if `backend/.env` holds your Neon URL, they run against Neon.
 
