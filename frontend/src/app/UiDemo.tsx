@@ -135,6 +135,7 @@ export function UiDemo() {
           <Badge tone="info">Info</Badge>
           <Badge tone="warning">Warning</Badge>
           <Badge tone="error">Error</Badge>
+          <Badge tone="strong">Strong</Badge>
         </div>
       </Section>
 

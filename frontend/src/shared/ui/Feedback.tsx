@@ -53,6 +53,7 @@ const BADGES = {
   info: "bg-blue-100 text-blue-900",
   warning: "bg-amber-100 text-amber-900",
   error: "bg-red-100 text-red-900",
+  strong: "bg-blue-900 text-white",
 };
 
 export function Badge({

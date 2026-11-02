@@ -6,6 +6,7 @@ import {
   ResetPasswordPage,
 } from "../features/staff/auth/PasswordPages";
 import { RequireStaff } from "../features/staff/auth/RequireStaff";
+import { RequestListPage } from "../features/staff/requests/RequestListPage";
 import { ConfirmationPage } from "../features/tenant-form/ConfirmationPage";
 import { TenantFormPage } from "../features/tenant-form/TenantFormPage";
 import { ErrorScreen } from "../shared/ui/ErrorScreen";
@@ -40,7 +41,7 @@ export const routes: RouteObject[] = [
             path: "/staff",
             element: <RequireStaff />,
             children: [
-              { index: true, element: <StaffPlaceholder title="Requests" /> },
+              { index: true, element: <RequestListPage /> },
               {
                 path: "requests/new",
                 element: <StaffPlaceholder title="Log request" />,
