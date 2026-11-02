@@ -5,7 +5,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // The backend's APP_ORIGIN must match exactly, so never drift to another port.
-  server: { port: 3000, strictPort: true },
+  server: {
+    port: 3000,
+    strictPort: true,
+    // siteConfig reads this one backend file. Never allow the whole backend folder.
+    fs: { allow: [".", "../backend/app/intake/form_config.json"] },
+  },
   test: {
     environment: "jsdom",
     env: {
