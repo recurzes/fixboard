@@ -38,6 +38,13 @@ function fakeServers({
       return json({});
     }
     if (url === `${API}/api/staff/me`) return me();
+    if (url === `${API}/api/staff/requests/summary`) {
+      return json({
+        by_status: { new: 0, scheduled: 0, waiting_on_vendor: 0, done: 0 },
+        open_urgent: 0,
+        open_needs_review: 0,
+      });
+    }
     if (url.startsWith(AUTH)) return json({ status: true });
     throw new Error(`Unexpected call to ${url}`);
   });
