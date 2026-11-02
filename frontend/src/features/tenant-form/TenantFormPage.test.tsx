@@ -31,6 +31,7 @@ const choice = (id: string, label: string, options: object[]) => ({
 const CONFIG = {
   emergency_number: "(000) 000-0000",
   require_emergency_ack: true,
+  form_enabled: true,
   categories: [
     {
       id: "ac",
@@ -78,6 +79,7 @@ type RawQuestion = {
 // The server fills in these defaults when it serves the file.
 const servedConfig = {
   ...formConfig,
+  form_enabled: true,
   categories: formConfig.categories.map((category) => ({
     ...category,
     questions: category.questions.map((question: RawQuestion) => ({
@@ -734,7 +736,7 @@ it("never asks once the form has left the page, as on the confirmation page", as
 
   await act(async () => router.navigate("/done"));
 
-  expect(container.textContent).toContain("Request received");
+  expect(container.textContent).toContain("Thank you");
   expect(promptsOnLeave()).toBe(false);
 });
 

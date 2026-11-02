@@ -43,7 +43,15 @@ export function validateStep2(fields: FormFields, categories: Category[]) {
 }
 
 export type Step3Errors = Partial<
-  Record<"description" | "entry_permission" | "not_an_emergency", string>
+  Record<
+    | "description"
+    | "entry_permission"
+    | "entry_notes"
+    | "not_an_emergency"
+    // Only the server reports this one.
+    | "photos",
+    string
+  >
 >;
 
 export function validateStep3(

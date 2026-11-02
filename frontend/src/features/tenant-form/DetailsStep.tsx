@@ -2,6 +2,7 @@ import type { ActionDispatch } from "react";
 import { siteConfig } from "../../shared/lib/siteConfig";
 import { Checkbox, RadioGroup } from "../../shared/ui/Choice";
 import { EmergencyLink } from "../../shared/ui/ErrorScreen";
+import { Alert } from "../../shared/ui/Feedback";
 import { Textarea } from "../../shared/ui/Field";
 import type { FormAction, FormFields } from "./formState";
 import { PhotoPicker } from "./PhotoPicker";
@@ -66,6 +67,7 @@ export function DetailsStep({
       </div>
 
       <PhotoPicker photos={photos} />
+      {errors.photos && <Alert variant="error">{errors.photos}</Alert>}
 
       <RadioGroup
         label="Can we enter your home? (required)"
@@ -87,6 +89,7 @@ export function DetailsStep({
         name="entry_notes"
         maxLength={ENTRY_NOTES_LIMIT}
         value={fields.entry_notes}
+        error={errors.entry_notes}
         onChange={(event) =>
           dispatch({
             type: "set",

@@ -27,6 +27,7 @@ export type Category = { id: string; label: string; questions: Question[] };
 export type PublicConfig = {
   emergency_number: string;
   require_emergency_ack: boolean;
+  form_enabled: boolean;
   categories: Category[];
 };
 
