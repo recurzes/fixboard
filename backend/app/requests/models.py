@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.assignees.models import Assignee
 from app.db import Base
 from app.intake.models import Property, Unit
+from app.staff.models import StaffUser
 
 # A sequence never hands a number out twice, even after a rollback. Gaps are harmless.
 REFERENCE_SEQUENCE = Sequence("request_reference_seq", start=1001, metadata=Base.metadata)
@@ -69,6 +70,20 @@ class MaintenanceRequest(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+    # The stale-edit check compares this, so it must move on every update. now() is the time the
+    # transaction started, which can repeat.
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.clock_timestamp()
     )
+
+
+class Note(Base):
+    __tablename__ = "notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(
+        ForeignKey(MaintenanceRequest.id, ondelete="CASCADE"), index=True
+    )
+    author_id: Mapped[int] = mapped_column(ForeignKey(StaffUser.id))
+    body: Mapped[str]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

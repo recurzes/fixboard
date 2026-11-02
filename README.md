@@ -6,8 +6,8 @@ A maintenance request tool for a rental company of about 75 units. Tenants submi
 
 Backend only, and still in progress:
 
-- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, and the staff API for listing, searching, and opening requests and their photos.
-- **Not built yet:** changing requests, notes, history, and the frontend.
+- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, and the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list.
+- **Not built yet:** history and the frontend.
 
 ## Stack
 
@@ -135,8 +135,14 @@ Everything the form asks lives in `backend/app/intake/form_config.json`, and the
 | GET | `/api/staff/me` | Staff | The signed-in staff user |
 | GET | `/api/staff/requests` | Staff | List requests, 25 per page, newest first |
 | GET | `/api/staff/requests/summary` | Staff | Counts by status, plus open urgent and needs-review counts |
-| GET | `/api/staff/requests/{id}` | Staff | Full request, with photo ids. Notes stay empty until the notes API exists |
+| POST | `/api/staff/requests` | Staff | Log a phone, text, or in-person request |
+| GET | `/api/staff/requests/{id}` | Staff | Full request, with photo ids and notes |
+| PATCH | `/api/staff/requests/{id}` | Staff | Change status, assignee, or scheduled time, or clear the review flag |
+| POST | `/api/staff/requests/{id}/notes` | Staff | Add an internal note |
 | GET | `/api/staff/requests/{id}/photos/{photo_id}` | Staff | A short-lived signed link to one photo |
+| GET | `/api/staff/assignees` | Staff | Active vendor-list entries with their kind |
+| POST | `/api/staff/assignees` | Staff | Add an outside vendor |
+| PATCH | `/api/staff/assignees/{id}` | Staff | Rename or deactivate an entry |
 
 Submit a request as multipart, using a `unit_id` from your own data. Plain JSON bodies are not accepted:
 
@@ -175,6 +181,25 @@ The staff list takes these query parameters, and all of them can be combined:
 - **`q`:** partial, case-insensitive search on reference number, unit label, and tenant name. An exact reference number returns only that request.
 - **`include_done`:** Done requests are hidden unless this is `true` or `status` names `done`. This also applies to `q`, so searching for a Done request's reference number needs one of them.
 - **`cursor`:** the `next_cursor` from the previous page. It is `null` on the last page. Keep the same filters while paging.
+
+To change a request, send the `updated_at` you last read, plus only the fields to change:
+
+```sh
+curl -X PATCH http://localhost:8000/api/staff/requests/1 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "updated_at": "2026-11-02T01:00:00.123456Z", "status": "waiting_on_vendor", "assignee_id": 2 }'
+```
+
+- **`updated_at`:** required. If someone else changed the request since, the response is a 409 and nothing changes, so reload it. Adding a note does not count as a change.
+- **`status`:** `new`, `scheduled`, `waiting_on_vendor`, or `done`. Any status can move to any other. `waiting_on_vendor` needs an outside vendor as the assignee, or the response is a 422.
+- **`assignee_id`:** must be an active entry, unless it is already on the request. `null` unassigns. A request on Waiting on vendor that loses its vendor moves to Scheduled, unless the same call names another status.
+- **`scheduled_at`:** a time with a UTC offset, or `null` to clear it.
+- **`needs_review`:** only `false` is accepted.
+
+To log a request for a tenant, send `POST /api/staff/requests` as JSON with the same fields as the public form, plus `source`: `phone`, `text`, or `in_person`. It skips the honeypot, rate limits, and acknowledgement, never flags for review, and takes no photos or `Idempotency-Key`, so a repeated call creates a second request.
+
+Vendor-list names must be unique, and a duplicate returns 409. In-house maintenance can be renamed but not deactivated. A deactivated entry stays on the requests that already have it.
 
 Errors look like `{ "error": { "code", "message" } }`, and a 422 also lists `fields`. When the form is closed, the response is a 503 with the code `form_closed`. When photo storage is down, it is a 503 with the code `service_unavailable`.
 
