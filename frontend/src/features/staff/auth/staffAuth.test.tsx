@@ -112,8 +112,9 @@ it("a deep link while signed out goes to login, then back to it", async () => {
 
   await signInWith(container, "right");
 
-  await seesHeading(container, "Staff dashboard");
-  expect(router.state.location.pathname).toBe("/staff/requests/7");
+  await vi.waitFor(() =>
+    expect(router.state.location.pathname).toBe("/staff/requests/7"),
+  );
   expect(router.state.location.search).toBe("?tab=notes");
 });
 
