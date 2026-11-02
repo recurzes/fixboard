@@ -16,6 +16,7 @@ import {
   initialFormState,
   LAST_STEP,
 } from "../../shared/form/formState";
+import { ErrorSummary } from "../../shared/form/ErrorSummary";
 import { IssueFields } from "../../shared/form/IssueFields";
 import { LoadError } from "../../shared/form/LoadError";
 import { LocationContactFields } from "../../shared/form/LocationContactFields";
@@ -226,6 +227,7 @@ function TenantForm({
         </span>
         <span className="text-xl font-bold">{STEP_TITLES[step]}</span>
       </h2>
+      <ErrorSummary errors={errors} />
 
       {/* Off-screen, not display: none, which many bots skip. */}
       <div aria-hidden="true" className="absolute -left-[9999px]">

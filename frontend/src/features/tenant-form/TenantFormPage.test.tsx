@@ -218,6 +218,10 @@ const category = (container: HTMLElement, label: string) =>
 const stepHeading = (container: HTMLElement) =>
   container.querySelector("h2")?.textContent;
 
+// The number inside the error itself, not only in the banner above it.
+const errorNumber = (container: HTMLElement) =>
+  container.querySelector('[role="alert"] a[href^="tel:"]');
+
 const callouts = (container: HTMLElement) =>
   container.querySelectorAll('[role="alert"] a[href="tel:0000000000"]');
 
@@ -242,6 +246,7 @@ it("with the API down, shows the banner, the number, and a working Retry", async
   expect(container.querySelector('a[href^="tel:"]')?.textContent).toBe(
     siteConfig.emergencyNumber,
   );
+  expect(errorNumber(container)).not.toBeNull();
 
   down = false;
   await act(async () => retry.click());
@@ -305,7 +310,9 @@ it("says to call when a property has no units, and Next stays blocked", async ()
   await change(control(container, "property_id"), "3");
 
   await vi.waitFor(() =>
-    expect(container.textContent).toContain("No units listed. Please call us"),
+    expect(container.textContent).toContain(
+      `No units listed. Please call ${siteConfig.emergencyNumber}`,
+    ),
   );
   await change(control(container, "tenant_name"), "Sam");
   await change(control(container, "phone"), "5551234567");
@@ -330,12 +337,41 @@ it("offers Retry when the unit list fails", async () => {
     expect(button(container, "Retry")).toBeDefined();
     return button(container, "Retry")!;
   });
+  expect(errorNumber(container)).not.toBeNull();
 
   down = false;
   await act(async () => retry.click());
 
   await vi.waitFor(() =>
     expect(control(container, "unit_id").disabled).toBe(false),
+  );
+});
+
+it("gives the number and Retry when the property list fails", async () => {
+  fakeApi({
+    [`${API}/properties`]: () => json({ error: { code: "x" } }, 503),
+  });
+  const container = await open();
+  await formLoaded(container);
+
+  await vi.waitFor(() =>
+    expect(container.textContent).toContain(
+      "We can't load the property list right now.",
+    ),
+  );
+  expect(errorNumber(container)).not.toBeNull();
+  expect(button(container, "Retry")).toBeDefined();
+});
+
+it("says to call when no properties are listed", async () => {
+  fakeApi({ [`${API}/properties`]: () => json([]) });
+  const container = await open();
+  await formLoaded(container);
+
+  await vi.waitFor(() =>
+    expect(container.textContent).toContain(
+      `No properties listed. Please call ${siteConfig.emergencyNumber}`,
+    ),
   );
 });
 
@@ -378,6 +414,9 @@ it("Next shows the errors and focuses the first invalid field", async () => {
 
   expect(container.textContent).toContain("Phone or email is required");
   expect(document.activeElement).toBe(control(container, "property_id"));
+  const summary = container.querySelector('form [role="alert"]')!;
+  expect(summary.textContent).toMatch(/^3 problems:/);
+  expect(summary.querySelectorAll("li")).toHaveLength(3);
   expect(container.querySelector("h2")?.textContent).toContain("Step 1 of 3");
 
   await pickUnit(container);

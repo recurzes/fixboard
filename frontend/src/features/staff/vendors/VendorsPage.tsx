@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import { apiFetch } from "../../../shared/api/client";
 import type { ApiError } from "../../../shared/api/client";
 import { Button } from "../../../shared/ui/Button";
-import { Alert, Badge, Spinner } from "../../../shared/ui/Feedback";
+import { Alert, Badge, EmptyState, Spinner } from "../../../shared/ui/Feedback";
 import { TextInput } from "../../../shared/ui/Field";
 import { Modal } from "../../../shared/ui/Modal";
 import { Toast, useToast } from "../../../shared/ui/Toast";
@@ -289,7 +289,12 @@ export function VendorsPage() {
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Vendors</h1>
       <AddVendor showToast={showToast} />
-      {assignees.data ? (
+      {assignees.data?.length === 0 ? (
+        // In-house maintenance is seeded, so this means the seed hasn't run.
+        <EmptyState title="No vendors yet">
+          Add an outside vendor above.
+        </EmptyState>
+      ) : assignees.data ? (
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
