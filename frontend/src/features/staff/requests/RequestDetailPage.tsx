@@ -1,13 +1,18 @@
+import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { Link, useLocation, useParams } from "react-router";
+import { Link, useBlocker, useLocation, useParams } from "react-router";
 import { formatDateTime } from "../../../shared/lib/dates";
 import { formatPhone } from "../../../shared/lib/phone";
+import { useLeaveWarning } from "../../../shared/lib/useLeaveWarning";
 import { Button } from "../../../shared/ui/Button";
 import { Alert, EmptyState, Spinner } from "../../../shared/ui/Feedback";
+import { Toast, useToast } from "../../../shared/ui/Toast";
 import { ENTRY_OPTIONS } from "../../tenant-form/DetailsStep";
 import { usePublicConfig } from "../../tenant-form/usePublicConfig";
 import type { PublicConfig } from "../../tenant-form/usePublicConfig";
 import { RequestBadges } from "./RequestBadges";
+import { RequestChanges, useRequestChanges } from "./RequestChanges";
+import { RequestNotes } from "./RequestNotes";
 import { RequestPhotos } from "./RequestPhotos";
 import { isNotFound, useRequest } from "./useRequest";
 import type { RequestDetail, RequestSource } from "./useRequest";
@@ -173,8 +178,27 @@ function Entry({ request }: { request: RequestDetail }) {
   );
 }
 
-function Detail({ request }: { request: RequestDetail }) {
+/** In-app links ask first. A refresh or close gets the browser's own prompt. */
+function useUnsavedGuard(dirty: boolean) {
+  const blocker = useBlocker(dirty);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    if (window.confirm("You have unsaved changes. Leave without saving?")) {
+      blocker.proceed();
+    } else {
+      blocker.reset();
+    }
+  }, [blocker]);
+  useLeaveWarning(dirty);
+}
+
+function Detail({ id, request }: { id: string; request: RequestDetail }) {
   const config = usePublicConfig().data;
+  const [toast, showToast] = useToast();
+  const changes = useRequestChanges(id, request, showToast);
+  useUnsavedGuard(changes.dirty);
+  const reviewing =
+    changes.save.isPending && "needs_review" in changes.save.variables;
   return (
     <div className="space-y-4">
       <div>
@@ -196,8 +220,18 @@ function Detail({ request }: { request: RequestDetail }) {
           of this unit, or the unit has no residents on file. It could be a new
           tenant, a guest, or someone who doesn't live there. The request was
           still accepted, so check who sent it before acting on it.
+          <div className="mt-2">
+            <Button
+              loading={reviewing}
+              disabled={changes.save.isPending}
+              onClick={() => changes.save.mutate({ needs_review: false })}
+            >
+              Mark as reviewed
+            </Button>
+          </div>
         </Alert>
       )}
+      <RequestChanges changes={changes} />
       <div className="grid gap-4 md:grid-cols-2 md:items-start">
         <div className="space-y-4">
           <Tenant request={request} />
@@ -211,8 +245,12 @@ function Detail({ request }: { request: RequestDetail }) {
               photoIds={request.photo_ids}
             />
           </Section>
+          <Section title="Notes">
+            <RequestNotes id={id} notes={request.notes} showToast={showToast} />
+          </Section>
         </div>
       </div>
+      <Toast toast={toast} />
     </div>
   );
 }
@@ -221,7 +259,7 @@ export function RequestDetailPage() {
   const { id } = useParams();
   const request = useRequest(id!);
 
-  if (request.data) return <Detail request={request.data} />;
+  if (request.data) return <Detail id={id!} request={request.data} />;
   return (
     <div className="space-y-4">
       <BackLink />

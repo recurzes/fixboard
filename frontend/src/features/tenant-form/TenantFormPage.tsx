@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useReducer, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { flushSync } from "react-dom";
 import { useMutation } from "@tanstack/react-query";
@@ -6,6 +6,7 @@ import { useNavigate } from "react-router";
 import { apiFetch } from "../../shared/api/client";
 import type { ApiError } from "../../shared/api/client";
 import { siteConfig } from "../../shared/lib/siteConfig";
+import { useLeaveWarning } from "../../shared/lib/useLeaveWarning";
 import { EmergencyLink } from "../../shared/ui/ErrorScreen";
 import { Button } from "../../shared/ui/Button";
 import { Alert, Spinner } from "../../shared/ui/Feedback";
@@ -149,19 +150,7 @@ function TenantForm({
   const hasData =
     photos.items.length > 0 ||
     JSON.stringify(fields) !== JSON.stringify(initialFormState.fields);
-  useEffect(() => {
-    if (!hasData) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      // Chromium fires this for tel: links too, and a call must never wait on a prompt.
-      // shortcut: relies on a clicked link taking focus, which desktop Safari skips, so it still prompts there.
-      if (document.activeElement?.matches('a[href^="tel:"]')) return;
-      event.preventDefault();
-      // Chrome and Edge before 119 ignore preventDefault here.
-      event.returnValue = true;
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [hasData]);
+  useLeaveWarning(hasData);
 
   const stepErrors: Record<string, string> =
     step === 1
