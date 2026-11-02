@@ -24,14 +24,20 @@ def migrated():
 @pytest.fixture
 def db(migrated):
     """A session on an emptied database, where everything is rolled back after the test."""
+    from sqlalchemy import text
     from sqlalchemy.orm import Session
 
+    from app.audit import models  # noqa: F401
     from app.db import Base, engine
 
     with engine.connect() as connection:
         transaction = connection.begin()
         for table in reversed(Base.metadata.sorted_tables):
-            connection.execute(table.delete())
+            # The trigger refuses DELETE on history. TRUNCATE is rolled back like the rest.
+            if table.name == "history":
+                connection.execute(text("TRUNCATE history"))
+            else:
+                connection.execute(table.delete())
         with Session(connection, join_transaction_mode="create_savepoint") as session:
             yield session
         transaction.rollback()

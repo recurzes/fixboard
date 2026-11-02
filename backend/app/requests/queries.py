@@ -8,6 +8,7 @@ from sqlalchemy import Row, func, or_, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.assignees.models import Assignee
+from app.audit.models import HistoryEntity, HistoryEvent
 from app.db import MAX_ID
 from app.intake.models import Property, Unit
 from app.photos.models import Photo
@@ -134,10 +135,27 @@ def get_request_detail(db: Session, request_id: int) -> dict | None:
         .where(Note.request_id == request_id)
         .order_by(Note.id)
     )
+    # By id, because every event in one transaction has the same time.
+    history = (
+        select(
+            HistoryEvent.id,
+            HistoryEvent.event,
+            HistoryEvent.field,
+            HistoryEvent.old_value,
+            HistoryEvent.new_value,
+            StaffUser.name.label("actor_name"),
+            HistoryEvent.created_at,
+        )
+        .outerjoin(StaffUser, HistoryEvent.actor_id == StaffUser.id)
+        .where(HistoryEvent.entity_type == HistoryEntity.request)
+        .where(HistoryEvent.entity_id == request_id)
+        .order_by(HistoryEvent.id.desc())
+    )
     return {
         **row._mapping,
         "photo_ids": db.scalars(photos).all(),
         "notes": db.execute(notes).all(),
+        "history": db.execute(history).all(),
     }
 
 

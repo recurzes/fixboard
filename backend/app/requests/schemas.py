@@ -11,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.audit.models import HistoryEventType
 from app.db import MAX_ID
 from app.phone import normalize_phone
 from app.requests.models import EntryPermission, RequestSource, RequestStatus
@@ -106,6 +107,18 @@ class NoteOut(BaseModel):
     created_at: datetime
 
 
+class HistoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event: HistoryEventType
+    field: str | None
+    old_value: str | None
+    new_value: str | None
+    actor_name: str | None  # null means the tenant
+    created_at: datetime
+
+
 class RequestRow(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -152,6 +165,7 @@ class RequestDetail(RequestRow):
     updated_at: datetime
     photo_ids: list[int]
     notes: list[NoteOut]
+    history: list[HistoryOut]  # newest first
 
 
 class PhotoUrl(BaseModel):
