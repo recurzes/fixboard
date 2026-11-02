@@ -4,10 +4,10 @@ A maintenance request tool for a rental company of about 75 units. Tenants submi
 
 ## Status
 
-The backend is finished and ready to deploy, but has not run in production yet. To deploy or operate it, see the [runbook](RUNBOOK.md).
+The backend and the frontend are finished and ready to deploy, but have not run in production yet. To deploy or operate them, see the [runbook](RUNBOOK.md).
 
-- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list, an append-only history of who changed what, privacy hardening, readiness checks, a smoke test, and demo data.
-- **Not built yet:** the frontend's screens. `frontend/` has the app setup: routes with placeholder pages, the API client, and Sentry.
+- **Backend:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list, an append-only history of who changed what, privacy hardening, readiness checks, a smoke test, and demo data.
+- **Frontend:** the tenant form and the staff dashboard. See the [frontend README](frontend/README.md).
 
 ## Stack
 
@@ -56,7 +56,7 @@ uv run uvicorn app.main:app --reload
 
 Check it at <http://localhost:8000/health>.
 
-To run the frontend, you need Node 24. Copy `.env.example` to `.env` and set `VITE_NEON_AUTH_URL`. It serves on <http://localhost:3000>, the `APP_ORIGIN` above:
+To run the frontend, you need Node 24. Copy `.env.example` to `.env` and set `VITE_NEON_AUTH_URL`. It serves on <http://localhost:3000>, the `APP_ORIGIN` above. The [frontend README](frontend/README.md) has the rest:
 
 ```sh
 cd frontend
@@ -235,7 +235,7 @@ Errors look like `{ "error": { "code", "message" } }`, and a 422 also lists `fie
 
 - **Routes:** a test lists every route and fails on any public one outside the API table above. `/docs`, `/redoc`, and `/openapi.json` are turned off for the same reason.
 - **Row-level security:** on for every table, with no policies. Only the role that owns the tables can see rows, so **the backend must connect as the role that ran the migrations**. Any other role gets nothing. A new table needs its own `ENABLE ROW LEVEL SECURITY` in its migration, and a test fails without it.
-- **Browsers:** CORS allows only `APP_ORIGIN`. Every response that passes through the app's middleware sends `Referrer-Policy: no-referrer`. The frontend must send the same header on its own pages, because those are the pages that load signed photo links.
+- **Browsers:** CORS allows only `APP_ORIGIN`. Every response that passes through the app's middleware sends `Referrer-Policy: no-referrer`. The frontend's nginx sends the same header on its own pages, because those are the pages that load signed photo links.
 - **Logs and Sentry:** Postgres error details are removed at the database engine, because they repeat whole rows. Tests check logs and Sentry events after successful and failed submits.
 
 ## Tests

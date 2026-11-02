@@ -1,0 +1,10 @@
+# Only the frontend image builds from the repo root (the backend's context is backend/).
+# Allow just what it needs, so CSVs, .env files, and notes/ never reach the build.
+*
+!frontend
+!backend/app/intake/form_config.json
+frontend/node_modules
+frontend/dist
+frontend/.env*
+frontend/test-results
+frontend/playwright-report

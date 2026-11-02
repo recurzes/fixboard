@@ -1,0 +1,44 @@
+# The Dockerfile fills in the ${...} origins at build time. nginx's own $variables are left alone.
+
+map $uri $cache_control {
+    # Vite puts a content hash in every file name here, so a deploy never reuses a cached one.
+    ~^/assets/ "public, max-age=31536000, immutable";
+    # Neon Auth sends its own.
+    ~^/neon-auth/ "";
+    # index.html above all is checked on every load, or a deploy never reaches phones.
+    default "no-cache";
+}
+
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    server_tokens off;
+
+    # blob: is the tenant form's photo previews.
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' blob: ${PHOTO_ORIGIN}; connect-src 'self' ${API_ORIGIN} ${SENTRY_ORIGIN}; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+    # Staff pages load signed photo links, which must never leak through a Referer.
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    # Not on errors, so a 404 is never cached for a year.
+    add_header Cache-Control $cache_control;
+
+    # Any other path is a route in the app, so a refresh on a deep link still loads it.
+    location / {
+        try_files $uri /index.html;
+    }
+
+    # A missing chunk is a 404, not index.html cached for a year.
+    location /assets/ {
+        try_files $uri =404;
+    }
+
+    # Neon Auth on this site's origin, because Safari drops a session cookie set by another site.
+    location /neon-auth/ {
+        # With the host in a variable, nginx looks it up per request, so it starts even if DNS is down.
+        resolver 1.1.1.1 valid=300s ipv6=off;
+        set $neon_auth ${NEON_AUTH_ORIGIN};
+        rewrite ^/neon-auth/(.*)$ ${NEON_AUTH_PATH}/$1 break;
+        proxy_pass $neon_auth;
+        proxy_ssl_server_name on;
+    }
+}

@@ -1,10 +1,10 @@
 # Runbook
 
-How to deploy, roll back, refresh the roster, and find out what broke. Setup and settings are in the [README](README.md).
+How to deploy, roll back, refresh the roster, and find out what broke. Setup and settings are in the [README](README.md). The frontend has its own section, [Frontend](#frontend).
 
 | What | Where |
 | --- | --- |
-| Backend container and logs | Dokploy, on the Oracle server |
+| Backend and frontend containers and logs | Dokploy, on the Oracle server |
 | Errors | Sentry |
 | Database and staff sign-in | Neon console |
 | Photos | The S3-compatible provider's console |
@@ -18,7 +18,7 @@ How to deploy, roll back, refresh the roster, and find out what broke. Setup and
    neon neon-auth config email-password update --disable-sign-up
    ```
 
-   Add the frontend's origin to Neon Auth's trusted domains, or sign-in and password emails are refused. Safari blocks the session cookie while the frontend and Neon Auth are on different sites, so staff on iPhones can't stay signed in until the auth URL is served from the frontend's own site (F111).
+   Add the frontend's origin to Neon Auth's trusted domains, or sign-in and password emails are refused. Safari blocks a session cookie set by another site, so the frontend's nginx serves Neon Auth from its own origin at `/neon-auth`.
 
 2. **Bucket:** create it and set it private on the provider. Afterwards, opening a file's plain URL must be refused.
 3. **Dokploy:** create an application from this repo, built from `backend/Dockerfile` with `backend` as the build context. Set a restart policy, and publish no ports.
@@ -151,3 +151,96 @@ History events for these requests stay, because the database refuses to delete t
 | Files left in the bucket | The orphan report, `python -m app.photos.report`. Run it weekly | Check each path. A submit in progress looks the same, so nothing is deleted automatically |
 | Emergency number is still the placeholder | `EMERGENCY NUMBER IS STILL THE PLACEHOLDER` at every start | Replace it in `form_config.json` and deploy |
 | DNS or tunnel problem | The domain fails while the container's logs look healthy | Check the Cloudflare dashboard |
+
+## Frontend
+
+One nginx container serves the built app. It holds no data and runs no migrations, so a deploy or a rollback is only a rebuild.
+
+### First deploy
+
+Deploy the backend first. The form needs the API, and the frontend's settings name the API's domain.
+
+1. **Dokploy:** create a second application from this repo, built from `frontend/Dockerfile` with the **repo root** as the build context. The build reads `backend/app/intake/form_config.json`, and the root `.dockerignore` lets in only that file and `frontend/`. Set a restart policy, and publish no ports.
+2. **Build arguments:** set these as build arguments in Dokploy, not runtime environment variables. The build bakes them in, so the container needs no environment.
+
+   ```sh
+   VITE_API_URL=https://<api domain>
+   NEON_AUTH_URL=          # the backend's NEON_AUTH_URL
+   VITE_SENTRY_DSN=        # the frontend's Sentry project, optional
+   PHOTO_ORIGIN=           # the origin of a signed photo link, such as https://<bucket host>
+   ```
+
+   The build fails if `VITE_API_URL` or `NEON_AUTH_URL` is missing. It also writes the Content Security Policy, which allows only the API, Sentry, and `PHOTO_ORIGIN` besides the site itself. If `PHOTO_ORIGIN` is wrong, staff see broken photos, and the browser console names the blocked host. Set it to that origin and rebuild.
+3. **Cloudflare:** add a public hostname to the tunnel and point it at the frontend container on port 80.
+4. **Backend:** set `APP_ORIGIN` to `https://<frontend domain>` exactly, with no trailing slash, and redeploy the backend. Add the same origin to Neon Auth's trusted domains.
+5. **Deploy,** then check all of these:
+   - `https://<frontend domain>/` shows the form, and the Property dropdown lists properties. That proves it talks to the API.
+   - Refreshing on `/staff/login` and on a request's page loads the page, not a 404.
+   - `curl -sI https://<frontend domain>/` shows `Content-Security-Policy`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, and `Cache-Control: no-cache`.
+   - The browser console shows no `Content-Security-Policy` errors while you add a photo on the form, and while you open a request with photos on the dashboard.
+   - On an iPhone, sign in, then refresh. You are still signed in. If not, check the `Set-Cookie` on the `/neon-auth/sign-in/email` response: the proxy can't keep a cookie that names Neon's domain.
+   - The build log shows no `EMERGENCY NUMBER` warning before real tenants use the form.
+
+### Routine deploy and rollback
+
+1. Confirm CI passed on the commit.
+2. Deploy it in Dokploy, then load the form and the dashboard.
+
+To roll back, redeploy the previous commit. Phones pick up a deploy on their next page load, because `index.html` is never cached. The script and style files have a content hash in their names, so they are cached for a year.
+
+### Changing the emergency number, time zone, or notice text
+
+Each one is built into the page, so restarting the container changes nothing. Rebuild.
+
+| Change | File | Rebuild |
+| --- | --- | --- |
+| Emergency number | `backend/app/intake/form_config.json` | **Both containers.** The banner and error screen are built into the frontend, and the form's call-us messages come from the API, so a frontend-only rebuild leaves them disagreeing |
+| Company time zone, entry notice, privacy notice | `frontend/src/shared/lib/siteConfig.ts` | The frontend |
+| A build argument, such as the API domain | Dokploy | The frontend |
+
+### End-to-end smoke test
+
+One Playwright test walks the whole journey on the real site. The tenant part runs on a phone-sized screen and submits with a photo. The staff part signs in, checks the New count, opens the request, assigns Plumber, and moves it to Waiting on vendor and then to Done. It needs the demo seed, because it uses `Demo - Palm Court` unit 101 and the Plumber vendor. From `frontend/`:
+
+```sh
+npx playwright install chromium
+E2E_BASE_URL=https://<frontend domain> \
+E2E_STAFF_EMAIL=... \
+E2E_STAFF_PASSWORD=... \
+npm run e2e
+```
+
+It creates one real request named `SMOKE TEST - please ignore` and leaves it as Done. The demo data removal deletes it, but its history events stay. The unit limit allows 10 submits an hour. A failed run keeps a trace in `test-results/`, which `npx playwright show-trace` opens.
+
+### Where frontend failures show up
+
+| Failure | Where you see it | What to do |
+| --- | --- | --- |
+| A page crashes | Sentry's frontend project, with personal data scrubbed. The tenant sees the error screen with the phone number | Fix forward, or roll back |
+| The page says "This site is not set up correctly" | The page names the missing build argument | Set it in Dokploy and rebuild |
+| A photo, script, or API call is blocked | The browser console only, as a `Content-Security-Policy` error. Sentry does not see it | Fix the build argument the blocked origin came from, and rebuild |
+| The form can't reach the API | Tenants see an error and the phone number. API calls fail in the browser's network tab | Check the backend. If it is up, check that `APP_ORIGIN` matches the frontend's origin exactly |
+| Sign-in fails for everyone | "Sign-in isn't available right now" | Check Neon Auth, the `NEON_AUTH_URL` build argument, and Neon's trusted domains |
+| Container won't start, or the site is down | Dokploy's logs. nginx logs each request there too | Check the logs, or redeploy the previous commit |
+
+## Client demo
+
+Run it on the real domain with the demo seed loaded: the form on a phone, the dashboard on a laptop. Rehearse it once on both devices before the client sees it. Write down every rough edge you hit, with the device and the step, and fix the worst three first.
+
+**Tenant, on the phone (about 2 minutes)**
+
+1. Open the form. Point out the emergency banner, and that the number is a call link.
+2. Pick `Demo - Palm Court`, unit 101, and enter a name and a phone number.
+3. Choose Plumbing, then "A clogged drain", and show the self-check card. Then choose "Water is flooding and will not stop", and show the call-us message.
+4. Switch to a leak, describe it, add a photo from the library, pick entry permission, and tick "This is not an emergency".
+5. Submit, and show the reference number and Copy.
+
+**Staff, on the laptop (about 3 minutes)**
+
+1. Sign in. Show the New count in the tab title and on the chips, and the highlighted New rows.
+2. Open the urgent flooding request from Avery Stone, then the contact mismatch from Blake Rivera, and mark it as reviewed.
+3. Open the request just submitted from the phone, and its photo.
+4. Assign an outside vendor, set a scheduled time, add a note, and move it to Waiting on vendor, then to Done. Show the history.
+5. Log a phone request for a tenant, and add a vendor on the vendor page.
+
+Afterwards, go through the README's open assumptions with the client in the same sitting, and remove the demo data before real tenants arrive.
