@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { initialFormState } from "./formState";
 import type { Category } from "./usePublicConfig";
-import { validateStep1, validateStep2 } from "./validation";
+import { validateStep1, validateStep2, validateStep3 } from "./validation";
 
 const valid = {
   ...initialFormState.fields,
@@ -82,4 +82,32 @@ it.each([
 
 it("a missing optional answer does not block", () => {
   expect(step2({ needed: "yes" })).toEqual({});
+});
+
+const step3Valid = {
+  ...initialFormState.fields,
+  description: "The sink leaks",
+  entry_permission: "anytime",
+  not_an_emergency: true,
+};
+
+it("passes a complete last step, with no entry notes", () => {
+  expect(validateStep3(step3Valid, true)).toEqual({});
+});
+
+it.each([
+  ["missing description", { description: "" }, "description"],
+  ["a description of only spaces", { description: " \n " }, "description"],
+  ["missing entry permission", { entry_permission: "" }, "entry_permission"],
+  ["an unticked box", { not_an_emergency: false }, "not_an_emergency"],
+])("refuses %s", (_name, change, field) => {
+  expect(
+    Object.keys(validateStep3({ ...step3Valid, ...change }, true)),
+  ).toEqual([field]);
+});
+
+it("an unticked box does not block when the config switches it off", () => {
+  expect(
+    validateStep3({ ...step3Valid, not_an_emergency: false }, false),
+  ).toEqual({});
 });
