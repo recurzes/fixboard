@@ -1,0 +1,247 @@
+import type { ReactNode } from "react";
+import { Link, useLocation, useParams } from "react-router";
+import { formatDateTime } from "../../../shared/lib/dates";
+import { formatPhone } from "../../../shared/lib/phone";
+import { Button } from "../../../shared/ui/Button";
+import { Alert, EmptyState, Spinner } from "../../../shared/ui/Feedback";
+import { ENTRY_OPTIONS } from "../../tenant-form/DetailsStep";
+import { usePublicConfig } from "../../tenant-form/usePublicConfig";
+import type { PublicConfig } from "../../tenant-form/usePublicConfig";
+import { RequestBadges } from "./RequestBadges";
+import { RequestPhotos } from "./RequestPhotos";
+import { isNotFound, useRequest } from "./useRequest";
+import type { RequestDetail, RequestSource } from "./useRequest";
+
+const SOURCE_LABELS: Record<RequestSource, string> = {
+  tenant_form: "Tenant form",
+  phone: "Phone call",
+  text: "Text message",
+  in_person: "In person",
+};
+const LINK =
+  "inline-flex min-h-11 items-center text-blue-800 underline focus-visible:outline-2 focus-visible:outline-blue-700";
+
+/** The list puts its filters in history state, so Back lands on the same list. A new tab has none. */
+function BackLink() {
+  const state = useLocation().state as { listSearch?: unknown } | null;
+  const search = typeof state?.listSearch === "string" ? state.listSearch : "";
+  return (
+    <Link to={`/staff${search}`} className={LINK}>
+      ← Back to list
+    </Link>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-lg border border-gray-300 p-4">
+      <h2 className="mb-3 text-lg font-semibold">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Facts({ items }: { items: [string, ReactNode][] }) {
+  return (
+    <dl className="space-y-3">
+      {items.map(([term, value], index) => (
+        <div key={index}>
+          <dt className="text-sm text-gray-700">{term}</dt>
+          <dd className="break-words whitespace-pre-wrap">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function Tenant({ request }: { request: RequestDetail }) {
+  // Only one of phone and email is required, so either can be missing.
+  return (
+    <Section title="Tenant">
+      <Facts
+        items={[
+          [
+            "Property and unit",
+            `${request.property_name} · ${request.unit_label}`,
+          ],
+          ["Name", request.tenant_name],
+          [
+            "Phone",
+            request.phone ? (
+              <a href={`tel:${request.phone}`} className={LINK}>
+                {formatPhone(request.phone)}
+              </a>
+            ) : (
+              "Not given"
+            ),
+          ],
+          [
+            "Email",
+            request.email ? (
+              <a href={`mailto:${request.email}`} className={LINK}>
+                {request.email}
+              </a>
+            ) : (
+              "Not given"
+            ),
+          ],
+          ["Created", formatDateTime(request.created_at)],
+          ["Source", SOURCE_LABELS[request.source]],
+        ]}
+      />
+    </Section>
+  );
+}
+
+function Issue({
+  request,
+  config,
+}: {
+  request: RequestDetail;
+  config: PublicConfig | undefined;
+}) {
+  // Config can change after a request is made, so a retired category, question, option, or self-check shows its raw id.
+  const category = config?.categories.find(({ id }) => id === request.category);
+  const questions = category?.questions ?? [];
+  const rank = (id: string) => {
+    const index = questions.findIndex((question) => question.id === id);
+    return index === -1 ? questions.length : index;
+  };
+  // Postgres reorders the keys, so the answers go back into the order the tenant saw.
+  const answers = Object.entries(request.followup_answers)
+    .sort(([a], [b]) => rank(a) - rank(b))
+    .map(([id, value]): [string, ReactNode] => {
+      const question = questions.find((candidate) => candidate.id === id);
+      const option = question?.options.find((o) => o.value === value);
+      return [question?.label ?? id, option?.label ?? value];
+    });
+  const selfCheck =
+    request.self_check_shown &&
+    (config?.categories
+      .flatMap(({ questions }) => questions)
+      .flatMap(({ options }) => options)
+      .find(({ self_check }) => self_check?.id === request.self_check_shown)
+      ?.self_check?.text ??
+      request.self_check_shown);
+
+  return (
+    <Section title="Issue">
+      <Facts
+        items={[
+          ["Category", category?.label ?? request.category],
+          ["Description", request.description],
+          ...answers,
+          ["Self-check suggested", selfCheck || "None"],
+          ...(selfCheck
+            ? [
+                [
+                  "Tenant tried it",
+                  request.self_check_tried ? "Yes" : "No",
+                ] as [string, ReactNode],
+              ]
+            : []),
+        ]}
+      />
+    </Section>
+  );
+}
+
+/** Entry details reveal when a unit is empty, so they are staff-only. "Only if I'm home" must not be missed. */
+function Entry({ request }: { request: RequestDetail }) {
+  const homeOnly = request.entry_permission === "only_when_home";
+  const label =
+    ENTRY_OPTIONS.find(({ value }) => value === request.entry_permission)
+      ?.label ?? request.entry_permission;
+  return (
+    <section
+      className={`rounded-lg border-l-8 p-4 ${homeOnly ? "border-red-700 bg-red-50" : "border-amber-600 bg-amber-50"}`}
+    >
+      <h2 className="text-lg font-semibold">Entry permission</h2>
+      <p className={homeOnly ? "text-2xl font-bold" : "text-xl font-semibold"}>
+        {label}
+      </p>
+      {homeOnly && (
+        <p className="font-semibold">
+          Do not enter unless the tenant is there.
+        </p>
+      )}
+      <h3 className="mt-3 text-sm text-gray-700">Entry notes</h3>
+      <p className="break-words whitespace-pre-wrap">
+        {request.entry_notes ?? "None"}
+      </p>
+    </section>
+  );
+}
+
+function Detail({ request }: { request: RequestDetail }) {
+  const config = usePublicConfig().data;
+  return (
+    <div className="space-y-4">
+      <div>
+        <BackLink />
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="text-2xl font-bold">{request.reference_number}</h1>
+          <RequestBadges request={request} />
+        </div>
+      </div>
+      {request.urgent && (
+        <Alert variant="error" word="Urgent">
+          This request is flagged urgent. Handle it before routine work.
+        </Alert>
+      )}
+      {/* needs_review, not contact_matched: a request staff took from the tenant directly is unmatched but not flagged. */}
+      {request.needs_review && (
+        <Alert variant="warning" word="Needs review">
+          The phone and email on this request don't match any current resident
+          of this unit, or the unit has no residents on file. It could be a new
+          tenant, a guest, or someone who doesn't live there. The request was
+          still accepted, so check who sent it before acting on it.
+        </Alert>
+      )}
+      <div className="grid gap-4 md:grid-cols-2 md:items-start">
+        <div className="space-y-4">
+          <Tenant request={request} />
+          <Entry request={request} />
+        </div>
+        <div className="space-y-4">
+          <Issue request={request} config={config} />
+          <Section title="Photos">
+            <RequestPhotos
+              requestId={request.id}
+              photoIds={request.photo_ids}
+            />
+          </Section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function RequestDetailPage() {
+  const { id } = useParams();
+  const request = useRequest(id!);
+
+  if (request.data) return <Detail request={request.data} />;
+  return (
+    <div className="space-y-4">
+      <BackLink />
+      {!request.isError ? (
+        <Spinner label="Loading request" />
+      ) : isNotFound(request.error) ? (
+        <EmptyState title="Request not found">
+          Check the link, or find the request in the list.
+        </EmptyState>
+      ) : (
+        <div className="space-y-2">
+          <Alert variant="error">We can't load this request right now.</Alert>
+          <Button
+            loading={request.isFetching}
+            onClick={() => void request.refetch()}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}

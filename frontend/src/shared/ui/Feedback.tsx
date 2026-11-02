@@ -8,12 +8,15 @@ const ALERTS = {
 
 export function Alert({
   variant,
+  word = ALERTS[variant].word,
   children,
 }: {
   variant: keyof typeof ALERTS;
+  /** Replaces the variant's opening word, such as "Urgent" on a banner that isn't an error. */
+  word?: string;
   children: ReactNode;
 }) {
-  const { word, className } = ALERTS[variant];
+  const { className } = ALERTS[variant];
   return (
     <div
       role={variant === "error" ? "alert" : "status"}

@@ -14,8 +14,8 @@ const DESCRIPTION_LIMIT = 5000;
 const ENTRY_NOTES_LIMIT = 1000;
 const WARN_WITHIN = 500;
 
-// Values are the backend's EntryPermission enum.
-const ENTRY_OPTIONS = [
+// Values are the backend's EntryPermission enum. Staff see these same words on the request.
+export const ENTRY_OPTIONS = [
   { value: "anytime", label: "Anytime" },
   { value: "notify_first", label: "Tell me first" },
   { value: "only_when_home", label: "Only if I'm home" },
