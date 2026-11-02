@@ -157,7 +157,7 @@ const button = (container: HTMLElement, text: string) =>
 
 /** Goes through the native setter, or React doesn't see the change. */
 async function change(
-  element: HTMLInputElement | HTMLSelectElement,
+  element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
   value: string,
 ) {
   const proto = Object.getPrototypeOf(element);
@@ -554,4 +554,185 @@ it("says to call on an urgent answer, once, and still reaches step 3", async () 
   ][]) {
     expect(init?.method ?? "GET").toBe("GET");
   }
+});
+
+async function reachStep3(container: HTMLElement) {
+  await reachStep2(container);
+  await category(container, "Plumbing");
+  await pick(container, "Problem?", "Leak");
+  await next(container);
+  expect(stepHeading(container)).toContain("Step 3 of 3");
+}
+
+const description = (container: HTMLElement) =>
+  control<HTMLTextAreaElement>(container, "description");
+
+const submit = (container: HTMLElement) =>
+  act(async () => button(container, "Submit")!.click());
+
+/** True if the browser would ask before leaving the page. */
+function promptsOnLeave() {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+it("counts the description, warns near the limit, and stops at the backend's", async () => {
+  fakeApi();
+  const container = await open();
+  await reachStep3(container);
+  expect(container.textContent).toContain(
+    "What is happening? When did it start?",
+  );
+  expect(description(container).maxLength).toBe(5000);
+  expect(container.textContent).toContain("0 of 5000 characters");
+
+  await change(description(container), "x".repeat(4499));
+  expect(container.textContent).toContain("4499 of 5000 characters");
+  expect(container.querySelector('[aria-live="polite"]')).toBeNull();
+
+  await change(description(container), "x".repeat(4500));
+  expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe(
+    "500 characters left",
+  );
+
+  await change(description(container), "x".repeat(5000));
+  expect(container.textContent).toContain("0 characters left");
+});
+
+it("offers the backend's entry values, the notice, and a hint for only if I'm home", async () => {
+  fakeApi();
+  const container = await open();
+  await reachStep3(container);
+  const question = "Can we enter your home?";
+  const values = [...group(container, question)!.querySelectorAll("input")].map(
+    ({ value }) => value,
+  );
+  expect(values).toEqual(["anytime", "notify_first", "only_when_home"]);
+  expect(container.textContent).toContain(siteConfig.entryNotice);
+  const hint = "Tell us the days and times you're home";
+  expect(container.textContent).not.toContain(hint);
+
+  await pick(container, question, "Only if I'm home");
+  expect(container.textContent).toContain(hint);
+
+  await pick(container, question, "Anytime");
+  expect(container.textContent).not.toContain(hint);
+  expect(control<HTMLTextAreaElement>(container, "entry_notes").maxLength).toBe(
+    1000,
+  );
+});
+
+it("Submit shows each missing field in page order, and stays until the box is ticked", async () => {
+  fakeApi();
+  const container = await open();
+  await reachStep3(container);
+  const box = control(container, "not_an_emergency");
+
+  await submit(container);
+  expect(document.activeElement).toBe(description(container));
+
+  await change(description(container), "The sink leaks");
+  await submit(container);
+  expect(document.activeElement).toBe(
+    radio(container, "Can we enter your home?", "Anytime"),
+  );
+
+  await pick(container, "Can we enter your home?", "Anytime");
+  await submit(container);
+  expect(document.activeElement).toBe(box);
+  expect(container.textContent).toContain("Confirm this is not an emergency");
+
+  await act(async () => box.click());
+  await submit(container);
+  expect(container.querySelector('[aria-invalid="true"]')).toBeNull();
+  expect(stepHeading(container)).toContain("Step 3 of 3");
+});
+
+it("puts the box directly above Submit, with the number, and the privacy notice under it", async () => {
+  fakeApi();
+  const container = await open();
+  await reachStep3(container);
+  const box = control(container, "not_an_emergency");
+  const submitButton = button(container, "Submit")!;
+  const notice = [...container.querySelectorAll("p")].find(
+    (paragraph) => paragraph.textContent === siteConfig.privacyNotice,
+  )!;
+
+  const follows = (a: Node, b: Node) =>
+    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+  expect(follows(box, submitButton)).toBeTruthy();
+  expect(follows(submitButton, notice)).toBeTruthy();
+  // Nothing to fill in sits between the box and Submit.
+  const controls = [...container.querySelectorAll("input, textarea, select")];
+  expect(controls.at(-1)).toBe(box);
+  expect(box.closest("div")!.parentElement!.textContent).toContain(
+    `flooding, call ${siteConfig.emergencyNumber}.`,
+  );
+});
+
+it("hides the box and lets Submit through when the config switches it off", async () => {
+  fakeApi({
+    [`${API}/config`]: () => json({ ...CONFIG, require_emergency_ack: false }),
+  });
+  const container = await open();
+  await reachStep3(container);
+  expect(control(container, "not_an_emergency")).toBeNull();
+
+  await change(description(container), "The sink leaks");
+  await pick(container, "Can we enter your home?", "Anytime");
+  await submit(container);
+  expect(container.querySelector('[aria-invalid="true"]')).toBeNull();
+});
+
+it("asks before leaving once something is typed, and not after", async () => {
+  fakeApi();
+  const container = await open();
+  await formLoaded(container);
+  expect(promptsOnLeave()).toBe(false);
+
+  await change(control(container, "tenant_name"), "Sam");
+  expect(promptsOnLeave()).toBe(true);
+
+  await change(control(container, "tenant_name"), "");
+  expect(promptsOnLeave()).toBe(false);
+});
+
+it("never holds up a call to the emergency number with the prompt", async () => {
+  fakeApi();
+  const container = await open();
+  await formLoaded(container);
+  await change(control(container, "tenant_name"), "Sam");
+
+  act(() => container.querySelector<HTMLElement>('a[href^="tel:"]')!.focus());
+
+  expect(promptsOnLeave()).toBe(false);
+});
+
+it("never asks once the form has left the page, as on the confirmation page", async () => {
+  fakeApi();
+  const client = new QueryClient();
+  const router = createMemoryRouter(routes, { initialEntries: ["/"] });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    ),
+  );
+  cleanups.push(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+  await formLoaded(container);
+  await change(control(container, "tenant_name"), "Sam");
+  expect(promptsOnLeave()).toBe(true);
+
+  await act(async () => router.navigate("/done"));
+
+  expect(container.textContent).toContain("Request received");
+  expect(promptsOnLeave()).toBe(false);
 });

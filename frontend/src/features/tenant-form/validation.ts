@@ -41,3 +41,23 @@ export function validateStep2(fields: FormFields, categories: Category[]) {
   }
   return errors;
 }
+
+export type Step3Errors = Partial<
+  Record<"description" | "entry_permission" | "not_an_emergency", string>
+>;
+
+export function validateStep3(
+  fields: FormFields,
+  requireEmergencyAck: boolean,
+) {
+  const errors: Step3Errors = {};
+  // The server strips spaces, so a description of only spaces is missing.
+  if (!fields.description.trim()) errors.description = "Describe the problem";
+  if (!fields.entry_permission) {
+    errors.entry_permission = "Choose when we can enter";
+  }
+  if (requireEmergencyAck && !fields.not_an_emergency) {
+    errors.not_an_emergency = "Confirm this is not an emergency";
+  }
+  return errors;
+}
