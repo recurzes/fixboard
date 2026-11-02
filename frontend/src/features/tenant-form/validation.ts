@@ -1,5 +1,6 @@
 import { isValidPhone } from "../../shared/lib/phone";
 import type { FormFields } from "./formState";
+import type { Category } from "./usePublicConfig";
 
 // Same as _EMAIL in backend/app/requests/schemas.py, so the browser never refuses what the server accepts.
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -23,5 +24,20 @@ export function validateStep1(fields: FormFields) {
   }
   if (email && !EMAIL.test(email)) errors.email = "Enter a valid email address";
 
+  return errors;
+}
+
+/** Keyed by question id, or "category" when none is chosen and so no questions apply. */
+export function validateStep2(fields: FormFields, categories: Category[]) {
+  const category = categories.find(({ id }) => id === fields.category);
+  if (!category) return { category: "Choose the kind of problem" };
+
+  const errors: Record<string, string> = {};
+  for (const { id, required } of category.questions) {
+    // The server treats a blank answer as missing.
+    if (required && !fields.followup_answers[id]?.trim()) {
+      errors[id] = "Answer this question";
+    }
+  }
   return errors;
 }
