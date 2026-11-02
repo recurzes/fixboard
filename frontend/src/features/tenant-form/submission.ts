@@ -1,5 +1,5 @@
 import type { FieldError } from "../../shared/api/client";
-import type { FormFields } from "./formState";
+import type { FormFields } from "../../shared/form/formState";
 
 /** The multipart body of POST /api/public/requests. Lists each field, so nothing else can be sent. */
 export function buildSubmission(fields: FormFields, photos: File[]) {

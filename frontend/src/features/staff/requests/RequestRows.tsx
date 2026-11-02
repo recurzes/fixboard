@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router";
 import { formatDateTime } from "../../../shared/lib/dates";
-import { usePublicConfig } from "../../tenant-form/usePublicConfig";
+import { usePublicConfig } from "../../../shared/form/usePublicConfig";
 import { RequestBadges } from "./RequestBadges";
 import type { RequestRow } from "./useRequests";
 

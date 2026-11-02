@@ -7,7 +7,9 @@ import {
 } from "../features/staff/auth/PasswordPages";
 import { RequireStaff } from "../features/staff/auth/RequireStaff";
 import { RequestDetailPage } from "../features/staff/requests/RequestDetailPage";
+import { LogRequestPage } from "../features/staff/requests/LogRequestPage";
 import { RequestListPage } from "../features/staff/requests/RequestListPage";
+import { VendorsPage } from "../features/staff/vendors/VendorsPage";
 import { ConfirmationPage } from "../features/tenant-form/ConfirmationPage";
 import { TenantFormPage } from "../features/tenant-form/TenantFormPage";
 import { ErrorScreen } from "../shared/ui/ErrorScreen";
@@ -43,15 +45,9 @@ export const routes: RouteObject[] = [
             element: <RequireStaff />,
             children: [
               { index: true, element: <RequestListPage /> },
-              {
-                path: "requests/new",
-                element: <StaffPlaceholder title="Log request" />,
-              },
+              { path: "requests/new", element: <LogRequestPage /> },
               { path: "requests/:id", element: <RequestDetailPage /> },
-              {
-                path: "vendors",
-                element: <StaffPlaceholder title="Vendors" />,
-              },
+              { path: "vendors", element: <VendorsPage /> },
               {
                 path: "*",
                 element: <StaffPlaceholder title="Staff dashboard" />,

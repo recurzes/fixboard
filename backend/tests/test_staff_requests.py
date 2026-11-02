@@ -753,6 +753,19 @@ def test_assignees_lists_active_entries_with_their_kind(db, client):
     assert response.json()[1]["id"] == plumber.id
 
 
+def test_assignees_include_inactive_lists_every_entry(db, client):
+    add_assignee(db, "Plumber")
+    add_assignee(db, "Old vendor", active=False)
+
+    response = client.get(ASSIGNEES, params={"include_inactive": "true"})
+
+    assert response.status_code == 200
+    assert [(a["name"], a["active"]) for a in response.json()] == [
+        ("Old vendor", False),
+        ("Plumber", True),
+    ]
+
+
 # T63
 
 

@@ -1,5 +1,5 @@
-import { Button } from "../../shared/ui/Button";
-import { Alert } from "../../shared/ui/Feedback";
+import { Button } from "../ui/Button";
+import { Alert } from "../ui/Feedback";
 
 /** Sits under the emergency banner, so the number stays on screen. */
 export function LoadError({

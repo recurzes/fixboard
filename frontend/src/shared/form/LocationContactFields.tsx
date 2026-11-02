@@ -1,21 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ActionDispatch } from "react";
-import { apiFetch } from "../../shared/api/client";
-import { formatPhoneInput } from "../../shared/lib/phone";
-import { Select, TextInput } from "../../shared/ui/Field";
+import { apiFetch } from "../api/client";
+import { formatPhoneInput } from "../lib/phone";
+import { Select, TextInput } from "../ui/Field";
 import type { FormAction, FormFields } from "./formState";
 import { LoadError } from "./LoadError";
 import type { Step1Errors } from "./validation";
 
-export function LocationContactStep({
+/** Property and unit, then the tenant's name, phone, and email. `staff` words it for someone filling it in for a tenant. */
+export function LocationContactFields({
   fields,
   errors,
   dispatch,
+  staff = false,
 }: {
   fields: FormFields;
   errors: Step1Errors;
   dispatch: ActionDispatch<[FormAction]>;
+  staff?: boolean;
 }) {
+  // Staff fill this in for someone else, so their browser must not offer their own details.
+  const autoComplete = (value: string) => (staff ? "off" : value);
   const properties = useQuery({
     queryKey: ["public", "properties"],
     queryFn: () =>
@@ -48,7 +53,11 @@ export function LocationContactStep({
         }
       >
         <option value="">
-          {properties.isPending ? "Loading properties" : "Choose your property"}
+          {properties.isPending
+            ? "Loading properties"
+            : staff
+              ? "Choose a property"
+              : "Choose your property"}
         </option>
         {properties.data?.map(({ id, name }) => (
           <option key={id} value={id}>
@@ -69,7 +78,13 @@ export function LocationContactStep({
         name="unit_id"
         value={fields.unit_id}
         disabled={!units.data}
-        error={noUnits ? "No units listed. Please call us" : errors.unit_id}
+        error={
+          noUnits
+            ? staff
+              ? "No units listed for this property"
+              : "No units listed. Please call us"
+            : errors.unit_id
+        }
         onChange={(event) =>
           dispatch({ type: "set", field: "unit_id", value: event.target.value })
         }
@@ -79,7 +94,9 @@ export function LocationContactStep({
             ? "Choose a property first"
             : units.isPending
               ? "Loading units"
-              : "Choose your unit"}
+              : staff
+                ? "Choose a unit"
+                : "Choose your unit"}
         </option>
         {units.data?.map(({ id, label }) => (
           <option key={id} value={id}>
@@ -96,9 +113,9 @@ export function LocationContactStep({
       )}
 
       <TextInput
-        label="Your name"
+        label={staff ? "Tenant name" : "Your name"}
         name="tenant_name"
-        autoComplete="name"
+        autoComplete={autoComplete("name")}
         maxLength={200}
         value={fields.tenant_name}
         error={errors.tenant_name}
@@ -112,11 +129,15 @@ export function LocationContactStep({
       />
       <TextInput
         label="Phone"
-        hint="Give us a phone number, an email, or both."
+        hint={
+          staff
+            ? "A phone number, an email, or both."
+            : "Give us a phone number, an email, or both."
+        }
         name="phone"
         type="tel"
         inputMode="tel"
-        autoComplete="tel"
+        autoComplete={autoComplete("tel")}
         value={fields.phone}
         error={errors.phone}
         onChange={(event) =>
@@ -132,7 +153,7 @@ export function LocationContactStep({
         name="email"
         type="email"
         inputMode="email"
-        autoComplete="email"
+        autoComplete={autoComplete("email")}
         maxLength={254}
         value={fields.email}
         error={errors.email}

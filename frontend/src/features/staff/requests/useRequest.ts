@@ -5,6 +5,13 @@ import type { RequestRow } from "./useRequests";
 export type EntryPermission = "anytime" | "notify_first" | "only_when_home";
 export type RequestSource = "tenant_form" | "phone" | "text" | "in_person";
 
+export const SOURCE_LABELS: Record<RequestSource, string> = {
+  tenant_form: "Tenant form",
+  phone: "Phone call",
+  text: "Text message",
+  in_person: "Walk-in",
+};
+
 export type Note = {
   id: number;
   body: string;
