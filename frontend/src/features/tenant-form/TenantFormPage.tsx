@@ -11,19 +11,27 @@ import { EmergencyLink } from "../../shared/ui/ErrorScreen";
 import { Button } from "../../shared/ui/Button";
 import { Alert, Spinner } from "../../shared/ui/Feedback";
 import { DetailsStep } from "./DetailsStep";
-import { formReducer, initialFormState, LAST_STEP } from "./formState";
-import { IssueStep } from "./IssueStep";
-import { LoadError } from "./LoadError";
-import { LocationContactStep } from "./LocationContactStep";
+import {
+  formReducer,
+  initialFormState,
+  LAST_STEP,
+} from "../../shared/form/formState";
+import { IssueFields } from "../../shared/form/IssueFields";
+import { LoadError } from "../../shared/form/LoadError";
+import { LocationContactFields } from "../../shared/form/LocationContactFields";
 import { usePhotos } from "./photos";
 import {
   buildSubmission,
   newIdempotencyKey,
   placeFieldErrors,
 } from "./submission";
-import { usePublicConfig } from "./usePublicConfig";
-import type { Category } from "./usePublicConfig";
-import { validateStep1, validateStep2, validateStep3 } from "./validation";
+import { usePublicConfig } from "../../shared/form/usePublicConfig";
+import type { Category } from "../../shared/form/usePublicConfig";
+import {
+  validateStep1,
+  validateStep2,
+  validateStep3,
+} from "../../shared/form/validation";
 
 const STEP_TITLES: Record<number, string> = {
   1: "Your home and contact details",
@@ -240,13 +248,13 @@ function TenantForm({
       </div>
 
       {step === 1 ? (
-        <LocationContactStep
+        <LocationContactFields
           fields={fields}
           errors={errors}
           dispatch={dispatch}
         />
       ) : step === 2 ? (
-        <IssueStep
+        <IssueFields
           categories={categories}
           fields={fields}
           errors={errors}

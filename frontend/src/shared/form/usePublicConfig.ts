@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "../../shared/api/client";
+import { apiFetch } from "../api/client";
 
 export type SelfCheck = {
   id: string;

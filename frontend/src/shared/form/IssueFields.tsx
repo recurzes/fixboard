@@ -1,25 +1,28 @@
 import type { ActionDispatch } from "react";
-import { Checkbox, RadioGroup } from "../../shared/ui/Choice";
-import { EmergencyLink } from "../../shared/ui/ErrorScreen";
-import { TextInput } from "../../shared/ui/Field";
+import { Checkbox, RadioGroup } from "../ui/Choice";
+import { EmergencyLink } from "../ui/ErrorScreen";
+import { TextInput } from "../ui/Field";
 import type { FormAction, FormFields } from "./formState";
 import type { Category, Question, SelfCheck } from "./usePublicConfig";
 
 type Dispatch = ActionDispatch<[FormAction]>;
 type Errors = Record<string, string>;
 
-export function IssueStep({
+/** The category and its follow-up questions. `staff` leaves out the call-us callout and the self-check, which are for tenants. */
+export function IssueFields({
   categories,
   fields,
   errors,
   dispatch,
   onCategoryChange,
+  staff = false,
 }: {
   categories: Category[];
   fields: FormFields;
   errors: Errors;
   dispatch: Dispatch;
   onCategoryChange: () => void;
+  staff?: boolean;
 }) {
   const category = categories.find(({ id }) => id === fields.category);
   return (
@@ -40,6 +43,7 @@ export function IssueStep({
           fields={fields}
           errors={errors}
           dispatch={dispatch}
+          staff={staff}
         />
       )}
     </div>
@@ -51,11 +55,13 @@ function FollowUps({
   fields,
   errors,
   dispatch,
+  staff,
 }: {
   category: Category;
   fields: FormFields;
   errors: Errors;
   dispatch: Dispatch;
+  staff: boolean;
 }) {
   const chosen = ({ id, options }: Question) =>
     options.find(({ value }) => value === fields.followup_answers[id]);
@@ -90,8 +96,8 @@ function FollowUps({
             onChange={answer}
           />
         )}
-        {question === urgent && <UrgentCallout />}
-        {selfCheck && selfCheck.id === fields.self_check_shown && (
+        {!staff && question === urgent && <UrgentCallout />}
+        {!staff && selfCheck && selfCheck.id === fields.self_check_shown && (
           <SelfCheckCard
             selfCheck={selfCheck}
             tried={fields.self_check_tried}

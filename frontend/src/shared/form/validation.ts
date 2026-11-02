@@ -1,4 +1,4 @@
-import { isValidPhone } from "../../shared/lib/phone";
+import { isValidPhone } from "../lib/phone";
 import type { FormFields } from "./formState";
 import type { Category } from "./usePublicConfig";
 

@@ -4,7 +4,7 @@ import { apiFetch } from "../../../shared/api/client";
 import { Button } from "../../../shared/ui/Button";
 import { Checkbox } from "../../../shared/ui/Choice";
 import { TextInput } from "../../../shared/ui/Field";
-import { usePublicConfig } from "../../tenant-form/usePublicConfig";
+import { usePublicConfig } from "../../../shared/form/usePublicConfig";
 import { STATUS_LABELS } from "./RequestBadges";
 import { STATUSES } from "./requestFilters";
 import type { RequestFilters } from "./requestFilters";

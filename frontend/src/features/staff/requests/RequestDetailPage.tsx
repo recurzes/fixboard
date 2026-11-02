@@ -1,28 +1,28 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { Link, useBlocker, useLocation, useParams } from "react-router";
+import {
+  Link,
+  useBlocker,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router";
 import { formatDateTime } from "../../../shared/lib/dates";
 import { formatPhone } from "../../../shared/lib/phone";
 import { useLeaveWarning } from "../../../shared/lib/useLeaveWarning";
 import { Button } from "../../../shared/ui/Button";
 import { Alert, EmptyState, Spinner } from "../../../shared/ui/Feedback";
 import { Toast, useToast } from "../../../shared/ui/Toast";
-import { ENTRY_OPTIONS } from "../../tenant-form/DetailsStep";
-import { usePublicConfig } from "../../tenant-form/usePublicConfig";
-import type { PublicConfig } from "../../tenant-form/usePublicConfig";
+import { ENTRY_OPTIONS } from "../../../shared/form/DetailsFields";
+import { usePublicConfig } from "../../../shared/form/usePublicConfig";
+import type { PublicConfig } from "../../../shared/form/usePublicConfig";
 import { RequestBadges } from "./RequestBadges";
 import { RequestChanges, useRequestChanges } from "./RequestChanges";
 import { RequestNotes } from "./RequestNotes";
 import { RequestPhotos } from "./RequestPhotos";
-import { isNotFound, useRequest } from "./useRequest";
-import type { RequestDetail, RequestSource } from "./useRequest";
+import { isNotFound, SOURCE_LABELS, useRequest } from "./useRequest";
+import type { RequestDetail } from "./useRequest";
 
-const SOURCE_LABELS: Record<RequestSource, string> = {
-  tenant_form: "Tenant form",
-  phone: "Phone call",
-  text: "Text message",
-  in_person: "In person",
-};
 const LINK =
   "inline-flex min-h-11 items-center text-blue-800 underline focus-visible:outline-2 focus-visible:outline-blue-700";
 
@@ -120,7 +120,9 @@ function Issue({
       const option = question?.options.find((o) => o.value === value);
       return [question?.label ?? id, option?.label ?? value];
     });
+  // A staff-logged request records a self-check from its answers, but nobody was shown it.
   const selfCheck =
+    request.source === "tenant_form" &&
     request.self_check_shown &&
     (config?.categories
       .flatMap(({ questions }) => questions)
@@ -136,7 +138,14 @@ function Issue({
           ["Category", category?.label ?? request.category],
           ["Description", request.description],
           ...answers,
-          ["Self-check suggested", selfCheck || "None"],
+          ...(request.source === "tenant_form"
+            ? [
+                ["Self-check suggested", selfCheck || "None"] as [
+                  string,
+                  ReactNode,
+                ],
+              ]
+            : []),
           ...(selfCheck
             ? [
                 [
@@ -197,6 +206,15 @@ function Detail({ id, request }: { id: string; request: RequestDetail }) {
   const [toast, showToast] = useToast();
   const changes = useRequestChanges(id, request, showToast);
   useUnsavedGuard(changes.dirty);
+  const { pathname, state } = useLocation();
+  const navigate = useNavigate();
+  const logged = (state as { logged?: unknown } | null)?.logged === true;
+  useEffect(() => {
+    if (!logged) return;
+    showToast("Request logged");
+    // Router state survives a refresh, which would show the toast again.
+    void navigate(pathname, { replace: true, state: null });
+  }, [logged, pathname, navigate, showToast]);
   const reviewing =
     changes.save.isPending && "needs_review" in changes.save.variables;
   return (
