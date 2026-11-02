@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, expect, it, vi } from "vitest";
+import formConfig from "../../../../backend/app/intake/form_config.json";
 import { routes } from "../../app/routes";
 import { siteConfig } from "../../shared/lib/siteConfig";
 
@@ -12,10 +13,81 @@ const API = "https://api.test.invalid/api/public";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
 
+const option = (label: string, extra = {}) => ({
+  value: label.toLowerCase(),
+  label,
+  urgent: false,
+  self_check: null,
+  ...extra,
+});
+const choice = (id: string, label: string, options: object[]) => ({
+  id,
+  label,
+  type: "single_choice",
+  required: true,
+  options,
+});
 const CONFIG = {
   emergency_number: "(000) 000-0000",
   require_emergency_ack: true,
-  categories: [],
+  categories: [
+    {
+      id: "ac",
+      label: "AC",
+      questions: [
+        choice("above_90", "Above 90?", [
+          option("Yes", { urgent: true }),
+          option("No"),
+        ]),
+        choice("gas", "Gas?", [option("Yes", { urgent: true }), option("No")]),
+        {
+          id: "where",
+          label: "Where?",
+          type: "text",
+          required: false,
+          options: [],
+        },
+      ],
+    },
+    {
+      id: "plumbing",
+      label: "Plumbing",
+      questions: [
+        choice("problem", "Problem?", [
+          option("Clogged", {
+            self_check: {
+              id: "drain",
+              text: "Try a plunger",
+              pending_client_approval: true,
+            },
+          }),
+          option("Leak"),
+        ]),
+      ],
+    },
+  ],
+};
+
+type RawQuestion = {
+  label: string;
+  required: boolean;
+  options?: { label: string; urgent?: boolean; self_check?: object }[];
+};
+
+// The server fills in these defaults when it serves the file.
+const servedConfig = {
+  ...formConfig,
+  categories: formConfig.categories.map((category) => ({
+    ...category,
+    questions: category.questions.map((question: RawQuestion) => ({
+      ...question,
+      options: (question.options ?? []).map((option) => ({
+        urgent: false,
+        self_check: null,
+        ...option,
+      })),
+    })),
+  })),
 };
 const UNITS: Record<string, { id: number; label: string }[]> = {
   "1": [
@@ -115,6 +187,41 @@ async function pickUnit(container: HTMLElement) {
 
 const next = (container: HTMLElement) =>
   act(async () => button(container, "Next")!.click());
+
+async function reachStep2(container: HTMLElement) {
+  await formLoaded(container);
+  await pickUnit(container);
+  await change(control(container, "tenant_name"), "Sam");
+  await change(control(container, "email"), "sam@example.com");
+  await next(container);
+}
+
+const group = (container: HTMLElement, question: string) =>
+  [...container.querySelectorAll("fieldset")].find((fieldset) =>
+    fieldset.querySelector("legend")!.textContent.startsWith(question),
+  );
+
+const radio = (container: HTMLElement, question: string, answer: string) =>
+  [...group(container, question)!.querySelectorAll("label")]
+    .find((label) => label.textContent === answer)!
+    .querySelector("input")!;
+
+const pick = (container: HTMLElement, question: string, answer: string) =>
+  act(async () => radio(container, question, answer).click());
+
+const category = (container: HTMLElement, label: string) =>
+  pick(container, "What kind of problem", label);
+
+const stepHeading = (container: HTMLElement) =>
+  container.querySelector("h2")?.textContent;
+
+const callouts = (container: HTMLElement) =>
+  container.querySelectorAll('[role="alert"] a[href="tel:0000000000"]');
+
+const triedBox = (container: HTMLElement) =>
+  [...container.querySelectorAll("label")]
+    .find((label) => label.textContent === "I tried this")
+    ?.querySelector("input");
 
 it("with the API down, shows the banner, the number, and a working Retry", async () => {
   let down = true;
@@ -299,6 +406,8 @@ it("moves focus to the heading and scrolls up on each step change, keeping value
   expect(document.activeElement).toBe(heading);
   expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
 
+  await category(container, "Plumbing");
+  await pick(container, "Problem?", "Leak");
   await next(container);
   expect(heading.textContent).toContain("Step 3 of 3");
   expect(button(container, "Next")).toBeUndefined();
@@ -312,4 +421,137 @@ it("moves focus to the heading and scrolls up on each step change, keeping value
   expect(control(container, "unit_id").value).toBe("11");
   // Coming back must not greet the tenant with old errors.
   expect(container.querySelector('[aria-invalid="true"]')).toBeNull();
+});
+
+it("renders every category and question in the real config, marking required ones", async () => {
+  fakeApi({ [`${API}/config`]: () => json(servedConfig) });
+  const container = await open();
+  await reachStep2(container);
+  expect(servedConfig.categories).toHaveLength(7);
+
+  for (const { label, questions } of servedConfig.categories) {
+    await category(container, label);
+    for (const question of questions) {
+      const mark = `${question.label} (required)`;
+      expect(container.textContent?.includes(mark)).toBe(question.required);
+      expect(container.textContent).toContain(question.label);
+    }
+  }
+});
+
+it("shows a self-check only on the answers the real config gives one", async () => {
+  fakeApi({ [`${API}/config`]: () => json(servedConfig) });
+  const container = await open();
+  await reachStep2(container);
+
+  const withCard: string[] = [];
+  for (const { label, questions } of servedConfig.categories) {
+    await category(container, label);
+    for (const question of questions) {
+      for (const { label: answer, self_check } of question.options) {
+        await pick(container, question.label, answer);
+        expect(!!triedBox(container)).toBe(!!self_check);
+        if (triedBox(container)) withCard.push(answer);
+      }
+    }
+  }
+  expect(withCard).toEqual([
+    "A clogged drain",
+    "An outlet or lights stopped working",
+  ]);
+});
+
+it("keeps Next blocked until the category and required answers are in", async () => {
+  fakeApi();
+  const container = await open();
+  await reachStep2(container);
+
+  await next(container);
+  expect(stepHeading(container)).toContain("Step 2 of 3");
+  expect(container.textContent).toContain("Choose the kind of problem");
+  expect(document.activeElement).toBe(radio(container, "What kind", "AC"));
+
+  await category(container, "AC");
+  expect(container.querySelector('[aria-invalid="true"]')).toBeNull();
+
+  await next(container);
+  expect(stepHeading(container)).toContain("Step 2 of 3");
+  expect(document.activeElement).toBe(radio(container, "Above 90?", "Yes"));
+
+  await pick(container, "Above 90?", "No");
+  await next(container);
+  expect(document.activeElement).toBe(radio(container, "Gas?", "Yes"));
+
+  // "Where?" is optional, so it stays empty and Next goes through.
+  await pick(container, "Gas?", "No");
+  await next(container);
+  expect(stepHeading(container)).toContain("Step 3 of 3");
+});
+
+it("forgets the answers when the category changes", async () => {
+  fakeApi();
+  const container = await open();
+  await reachStep2(container);
+  await category(container, "AC");
+  await pick(container, "Above 90?", "Yes");
+  await change(control(container, "where"), "Bedroom");
+
+  await category(container, "Plumbing");
+  await category(container, "AC");
+
+  expect(radio(container, "Above 90?", "Yes").checked).toBe(false);
+  expect(control(container, "where").value).toBe("");
+  expect(callouts(container)).toHaveLength(0);
+});
+
+it("hides the self-check and drops its tick when the answer changes", async () => {
+  fakeApi();
+  const container = await open();
+  await reachStep2(container);
+  await category(container, "Plumbing");
+  expect(triedBox(container)).toBeUndefined();
+
+  await pick(container, "Problem?", "Clogged");
+  expect(container.textContent).toContain("Try a plunger");
+  await act(async () => triedBox(container)!.click());
+  expect(triedBox(container)!.checked).toBe(true);
+
+  await pick(container, "Problem?", "Leak");
+  expect(container.textContent).not.toContain("Try a plunger");
+
+  await pick(container, "Problem?", "Clogged");
+  expect(triedBox(container)!.checked).toBe(false);
+});
+
+it("says to call on an urgent answer, once, and still reaches step 3", async () => {
+  const fetchMock = fakeApi();
+  const container = await open();
+  await reachStep2(container);
+  await category(container, "AC");
+  expect(callouts(container)).toHaveLength(0);
+
+  await pick(container, "Above 90?", "Yes");
+  expect(callouts(container)).toHaveLength(1);
+  expect(callouts(container)[0].textContent).toBe(siteConfig.emergencyNumber);
+  expect(container.textContent).toContain("You can still send this request.");
+
+  await pick(container, "Gas?", "Yes");
+  expect(callouts(container)).toHaveLength(1);
+
+  await pick(container, "Above 90?", "No");
+  expect(callouts(container)).toHaveLength(1);
+
+  await pick(container, "Gas?", "No");
+  expect(callouts(container)).toHaveLength(0);
+
+  await pick(container, "Gas?", "Yes");
+  await next(container);
+  expect(stepHeading(container)).toContain("Step 3 of 3");
+  // Every call so far is a plain read, so nothing about the answer left the browser.
+  for (const [, init] of fetchMock.mock.calls as unknown as [
+    string,
+    RequestInit | undefined,
+  ][]) {
+    expect(init?.method ?? "GET").toBe("GET");
+  }
 });

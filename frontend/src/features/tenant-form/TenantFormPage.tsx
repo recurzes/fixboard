@@ -5,10 +5,12 @@ import { EmergencyLink } from "../../shared/ui/ErrorScreen";
 import { Button } from "../../shared/ui/Button";
 import { Alert, Spinner } from "../../shared/ui/Feedback";
 import { formReducer, initialFormState, LAST_STEP } from "./formState";
+import { IssueStep } from "./IssueStep";
 import { LoadError } from "./LoadError";
 import { LocationContactStep } from "./LocationContactStep";
 import { usePublicConfig } from "./usePublicConfig";
-import { validateStep1 } from "./validation";
+import type { Category } from "./usePublicConfig";
+import { validateStep1, validateStep2 } from "./validation";
 
 const STEP_TITLES: Record<number, string> = {
   1: "Your home and contact details",
@@ -26,7 +28,7 @@ export function TenantFormPage() {
         this form. Call <EmergencyLink />.
       </Alert>
       {config.data ? (
-        <TenantForm />
+        <TenantForm categories={config.data.categories} />
       ) : config.isError ? (
         <LoadError
           what="the form"
@@ -42,7 +44,7 @@ export function TenantFormPage() {
   );
 }
 
-function TenantForm() {
+function TenantForm({ categories }: { categories: Category[] }) {
   const [{ step, fields }, dispatch] = useReducer(
     formReducer,
     initialFormState,
@@ -51,7 +53,12 @@ function TenantForm() {
   const form = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
-  const stepErrors = step === 1 ? validateStep1(fields) : {};
+  const stepErrors: Record<string, string> =
+    step === 1
+      ? validateStep1(fields)
+      : step === 2
+        ? validateStep2(fields, categories)
+        : {};
 
   function move(type: "next" | "back") {
     // Flushed so focus lands after the new step is on the page.
@@ -68,9 +75,11 @@ function TenantForm() {
     if (Object.keys(stepErrors).length === 0) return move("next");
     flushSync(() => setShowErrors(true));
     // Page order is field order, so the first match is the first invalid field.
-    form.current
-      ?.querySelector<HTMLElement>('[aria-invalid="true"]:not(:disabled)')
-      ?.focus();
+    const invalid = form.current?.querySelector<HTMLElement>(
+      '[aria-invalid="true"]:not(:disabled)',
+    );
+    // A radio group's fieldset can't take focus, so its first radio does.
+    (invalid?.querySelector("input") ?? invalid)?.focus();
   }
 
   return (
@@ -88,6 +97,15 @@ function TenantForm() {
           fields={fields}
           errors={showErrors ? stepErrors : {}}
           dispatch={dispatch}
+        />
+      ) : step === 2 ? (
+        <IssueStep
+          categories={categories}
+          fields={fields}
+          errors={showErrors ? stepErrors : {}}
+          dispatch={dispatch}
+          // A new category's questions shouldn't open already marked wrong.
+          onCategoryChange={() => setShowErrors(false)}
         />
       ) : (
         <p>This step isn't ready yet.</p>
