@@ -1,3 +1,4 @@
+import { getToken, refreshToken, signOut } from "../lib/auth";
 import { config } from "../lib/config";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -31,9 +32,49 @@ export type ApiOptions = Omit<RequestInit, "body" | "headers" | "signal"> & {
   timeoutMs?: number;
 };
 
+const isUnauthorized = (error: unknown) =>
+  error instanceof ApiError && error.status === 401;
+
 export async function apiFetch<T>(
   path: string,
-  { body, headers, timeoutMs = DEFAULT_TIMEOUT_MS, ...init }: ApiOptions = {},
+  options: ApiOptions = {},
+): Promise<T> {
+  // Only staff calls carry the token, so a public call can never leak it.
+  if (!path.startsWith("/api/staff")) return send<T>(path, options);
+
+  const sendWith = (token: string) =>
+    send<T>(path, {
+      ...options,
+      headers: { ...options.headers, Authorization: `Bearer ${token}` },
+    });
+
+  const sent = getToken();
+  try {
+    if (sent) return await sendWith(sent);
+  } catch (error) {
+    if (!isUnauthorized(error)) throw error;
+  }
+
+  // Another call may have refreshed while this one was out.
+  let fresh = getToken();
+  if (fresh === sent) {
+    fresh = await refreshToken().catch(() => {
+      throw new ApiError(0, "network_error", "Could not reach the server");
+    });
+  }
+  if (!fresh) throw new ApiError(401, "unauthorized", "Please sign in again");
+
+  try {
+    return await sendWith(fresh);
+  } catch (error) {
+    if (isUnauthorized(error)) await signOut();
+    throw error;
+  }
+}
+
+async function send<T>(
+  path: string,
+  { body, headers, timeoutMs = DEFAULT_TIMEOUT_MS, ...init }: ApiOptions,
 ): Promise<T> {
   // The browser sets the FormData Content-Type itself, because it holds the multipart boundary.
   const sendAsJson = body !== undefined && !(body instanceof FormData);

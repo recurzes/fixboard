@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -13,17 +14,27 @@ it.each([
   ["/", "Tenant form"],
   ["/done", "Request received"],
   ["/staff/login", "Staff sign in"],
-  ["/staff", "Staff dashboard"],
-  ["/staff/requests/1", "Staff dashboard"],
+  ["/staff", "Staff sign in"],
+  ["/staff/requests/1", "Staff sign in"],
   ["/nope", "Page not found"],
   ["/dev/ui", "UI demo"],
-])("%s shows %s", async (url, heading) => {
+])("%s signed out shows %s", async (url, heading) => {
+  const noSession = vi.fn(async () => new Response("{}", { status: 401 }));
+  vi.stubGlobal("fetch", noSession);
   const container = document.createElement("div");
   const router = createMemoryRouter(routes, { initialEntries: [url] });
   await act(async () =>
-    createRoot(container).render(<RouterProvider router={router} />),
+    createRoot(container).render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    ),
   );
-  expect(container.querySelector("h1")?.textContent).toBe(heading);
+  await vi.waitFor(() =>
+    expect(container.querySelector("h1")?.textContent).toBe(heading),
+  );
+  // Tenant pages must not depend on, or call, the sign-in service.
+  if (!url.startsWith("/staff")) expect(noSession).not.toHaveBeenCalled();
 });
 
 it("a component that throws shows the emergency number and reaches Sentry", async () => {
