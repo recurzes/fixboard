@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { NavLink, Outlet } from "react-router";
+import { useTitlePrefix } from "../../shared/lib/pageTitle";
 import { Button } from "../../shared/ui/Button";
 import { Badge } from "../../shared/ui/Feedback";
 import { useAuth } from "./auth/AuthProvider";
@@ -16,12 +16,7 @@ export function StaffLayout({ name }: { name: string }) {
   const summary = useSummary().data;
   const newCount = summary?.by_status.new ?? 0;
 
-  useEffect(() => {
-    document.title = newCount ? `(${newCount}) Fixboard` : "Fixboard";
-    return () => {
-      document.title = "Fixboard";
-    };
-  }, [newCount]);
+  useTitlePrefix(newCount ? `(${newCount}) ` : "");
 
   return (
     <>

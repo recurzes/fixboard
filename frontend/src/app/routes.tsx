@@ -12,6 +12,7 @@ import { RequestListPage } from "../features/staff/requests/RequestListPage";
 import { VendorsPage } from "../features/staff/vendors/VendorsPage";
 import { ConfirmationPage } from "../features/tenant-form/ConfirmationPage";
 import { TenantFormPage } from "../features/tenant-form/TenantFormPage";
+import { TitledOutlet } from "../shared/lib/pageTitle";
 import { ErrorScreen } from "../shared/ui/ErrorScreen";
 import { DemoCrash, UiDemo } from "./UiDemo";
 
@@ -31,32 +32,74 @@ export const routes: RouteObject[] = [
   {
     // The router catches render errors itself, so its boundary is the one that shows.
     errorElement: <ErrorScreen />,
+    element: <TitledOutlet />,
     children: [
-      { path: "/", element: <TenantFormPage /> },
-      { path: "/done", element: <ConfirmationPage /> },
+      {
+        path: "/",
+        element: <TenantFormPage />,
+        handle: { title: "Report a problem" },
+      },
+      {
+        path: "/done",
+        element: <ConfirmationPage />,
+        handle: { title: "Request sent" },
+      },
       {
         element: <AuthProvider />,
         children: [
-          { path: "/staff/login", element: <LoginPage /> },
-          { path: "/staff/forgot-password", element: <ForgotPasswordPage /> },
-          { path: "/staff/reset-password", element: <ResetPasswordPage /> },
+          {
+            path: "/staff/login",
+            element: <LoginPage />,
+            handle: { title: "Staff sign in" },
+          },
+          {
+            path: "/staff/forgot-password",
+            element: <ForgotPasswordPage />,
+            handle: { title: "Forgot password" },
+          },
+          {
+            path: "/staff/reset-password",
+            element: <ResetPasswordPage />,
+            handle: { title: "Set your password" },
+          },
           {
             path: "/staff",
             element: <RequireStaff />,
             children: [
-              { index: true, element: <RequestListPage /> },
-              { path: "requests/new", element: <LogRequestPage /> },
-              { path: "requests/:id", element: <RequestDetailPage /> },
-              { path: "vendors", element: <VendorsPage /> },
+              {
+                index: true,
+                element: <RequestListPage />,
+                handle: { title: "Requests" },
+              },
+              {
+                path: "requests/new",
+                element: <LogRequestPage />,
+                handle: { title: "Log request" },
+              },
+              {
+                path: "requests/:id",
+                element: <RequestDetailPage />,
+                handle: { title: "Request" },
+              },
+              {
+                path: "vendors",
+                element: <VendorsPage />,
+                handle: { title: "Vendors" },
+              },
               {
                 path: "*",
                 element: <StaffPlaceholder title="Staff dashboard" />,
+                handle: { title: "Staff dashboard" },
               },
             ],
           },
         ],
       },
-      { path: "*", element: <Placeholder title="Page not found" /> },
+      {
+        path: "*",
+        element: <Placeholder title="Page not found" />,
+        handle: { title: "Page not found" },
+      },
       // Vite removes these from production builds.
       ...(import.meta.env.DEV
         ? [

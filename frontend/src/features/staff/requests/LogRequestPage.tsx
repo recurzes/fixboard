@@ -11,6 +11,7 @@ import {
 } from "../../../shared/form/DetailsFields";
 import { formReducer, initialFormState } from "../../../shared/form/formState";
 import type { FormFields } from "../../../shared/form/formState";
+import { ErrorSummary } from "../../../shared/form/ErrorSummary";
 import { IssueFields } from "../../../shared/form/IssueFields";
 import { LoadError } from "../../../shared/form/LoadError";
 import { LocationContactFields } from "../../../shared/form/LocationContactFields";
@@ -58,6 +59,7 @@ export function LogRequestPage() {
           what="the form"
           retrying={config.isFetching}
           onRetry={() => void config.refetch()}
+          staff
         />
       ) : (
         <Spinner label="Loading the form" />
@@ -150,6 +152,7 @@ function LogRequestForm({ categories }: { categories: Category[] }) {
 
   return (
     <form ref={form} noValidate onSubmit={submit} className="space-y-4">
+      <ErrorSummary errors={errors} />
       <RadioGroup
         label="How did it come in? (required)"
         options={SOURCES}

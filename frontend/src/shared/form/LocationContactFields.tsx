@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ActionDispatch } from "react";
 import { apiFetch } from "../api/client";
 import { formatPhoneInput } from "../lib/phone";
+import { siteConfig } from "../lib/siteConfig";
 import { Select, TextInput } from "../ui/Field";
 import type { FormAction, FormFields } from "./formState";
 import { LoadError } from "./LoadError";
@@ -34,7 +35,13 @@ export function LocationContactFields({
       ),
     enabled: !!fields.property_id,
   });
+  const noProperties = properties.data?.length === 0;
   const noUnits = units.data?.length === 0;
+  // A select's error is plain text, so the number can't be a link here. The banner above has one.
+  const none = (what: string) =>
+    staff
+      ? `No ${what} listed`
+      : `No ${what} listed. Please call ${siteConfig.emergencyNumber}`;
 
   return (
     <div className="space-y-4">
@@ -43,7 +50,7 @@ export function LocationContactFields({
         name="property_id"
         value={fields.property_id}
         disabled={!properties.data}
-        error={errors.property_id}
+        error={noProperties ? none("properties") : errors.property_id}
         onChange={(event) =>
           dispatch({
             type: "set",
@@ -70,6 +77,7 @@ export function LocationContactFields({
           what="the property list"
           retrying={properties.isFetching}
           onRetry={() => void properties.refetch()}
+          staff={staff}
         />
       )}
 
@@ -78,13 +86,7 @@ export function LocationContactFields({
         name="unit_id"
         value={fields.unit_id}
         disabled={!units.data}
-        error={
-          noUnits
-            ? staff
-              ? "No units listed for this property"
-              : "No units listed. Please call us"
-            : errors.unit_id
-        }
+        error={noUnits ? none("units") : errors.unit_id}
         onChange={(event) =>
           dispatch({ type: "set", field: "unit_id", value: event.target.value })
         }
@@ -109,6 +111,7 @@ export function LocationContactFields({
           what="the unit list"
           retrying={units.isFetching}
           onRetry={() => void units.refetch()}
+          staff={staff}
         />
       )}
 
