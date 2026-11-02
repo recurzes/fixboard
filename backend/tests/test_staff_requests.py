@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta, timezone
 from itertools import count as counter
 from uuid import uuid4
@@ -5,11 +6,15 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
+from sqlalchemy.exc import DBAPIError
 
 from app.assignees.models import Assignee, AssigneeKind
+from app.audit.models import HistoryEntity, HistoryEvent, HistoryEventType
+from app.audit.service import record_event
 from app.db import MAX_ID, get_db
 from app.intake.models import Property, Unit
+from app.intake.routes import limiter
 from app.main import create_app
 from app.photos.models import Photo
 from app.requests.models import (
@@ -389,6 +394,7 @@ def test_detail_returns_everything_staff_need(db, client, oak):
     assert body["unit_label"] == "1A"
     assert body["photo_ids"] == [photo.id for photo in photos]
     assert body["notes"] == []
+    assert body["history"] == []
     assert "idempotency_key" not in body
     assert "storage_path" not in response.text
 
@@ -580,7 +586,7 @@ def test_update_statement_refuses_a_change_that_lands_after_the_read(db, oak):
     )
 
     with pytest.raises(HTTPException) as caught:
-        update_request(db, request.id, patch)
+        update_request(db, request.id, patch, None)
 
     assert caught.value.status_code == 409
 
@@ -995,3 +1001,278 @@ def test_whole_life_of_a_request(db, client, oak, staff):
     assert patch_request(client, request, status="done").json()["status"] == "done"
     assert patch_request(client, request, status="new").json()["status"] == "new"  # reopened
     assert len(client.get(f"{REQUESTS}/{logged['id']}").json()["notes"]) == 1
+
+
+# T66
+
+
+def stored_events(db, entity_type=HistoryEntity.request) -> list[HistoryEvent]:
+    query = select(HistoryEvent).where(HistoryEvent.entity_type == entity_type)
+    return db.scalars(query.order_by(HistoryEvent.id)).all()
+
+
+def changes_of(body: dict) -> list[tuple]:
+    """Oldest first, from a detail response, without the creation event."""
+    return [
+        (event["field"], event["old_value"], event["new_value"], event["actor_name"])
+        for event in reversed(body["history"])
+        if event["event"] == "changed"
+    ]
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [update(HistoryEvent).values(new_value="forged"), delete(HistoryEvent)],
+    ids=["update", "delete"],
+)
+def test_history_refuses_update_and_delete(db, statement):
+    record_event(db, HistoryEntity.request, 1, None, HistoryEventType.created, new="phone")
+    db.flush()
+
+    with pytest.raises(DBAPIError, match="append-only"), db.begin_nested():
+        db.execute(statement)
+
+    db.expire_all()
+    assert [event.new_value for event in stored_events(db)] == ["phone"]
+
+
+# T67
+
+
+def test_rolled_back_change_leaves_no_history(db):
+    record_event(db, HistoryEntity.request, 1, None, HistoryEventType.created)
+    db.flush()
+    assert len(stored_events(db)) == 1
+
+    db.rollback()
+
+    assert stored_events(db) == []
+
+
+# T68
+
+
+def public_submit(client, unit: Unit, key: str, **fields):
+    limiter.reset()
+    body = {**staff_request(unit), "not_an_emergency": True, **fields}
+    return client.post(
+        "/api/public/requests", headers={"Idempotency-Key": key}, data={"data": json.dumps(body)}
+    )
+
+
+def test_tenant_submit_logs_the_tenant_and_source_without_their_details(db, client, oak):
+    key = uuid4().hex
+    assert public_submit(client, oak, key, email="pat@example.com").status_code == 201
+
+    request = db.scalar(select(MaintenanceRequest))
+    event = stored_events(db)[0]
+    assert (event.entity_id, event.actor_id, event.event) == (
+        request.id,
+        None,
+        HistoryEventType.created,
+    )
+    assert (event.field, event.old_value, event.new_value) == ("source", None, "tenant_form")
+
+    # A retry returns the original, so nothing new happened.
+    assert public_submit(client, oak, key).status_code == 201
+    assert len(stored_events(db)) == 1
+
+
+def test_staff_logged_request_logs_the_staff_user_and_source(db, client, oak, staff):
+    body = client.post(REQUESTS, json=staff_request(oak, source="in_person")).json()
+
+    assert [(e["event"], e["new_value"], e["actor_name"]) for e in body["history"]] == [
+        ("created", "in_person", "Sam Lee")
+    ]
+    assert stored_events(db)[0].actor_id == staff.id
+
+
+def test_honeypot_submit_logs_nothing(db, client, oak):
+    assert public_submit(client, oak, uuid4().hex, website="filled").status_code == 201
+    assert stored_events(db) == []
+
+
+# T69
+
+
+def test_patch_of_three_fields_writes_three_events(db, client, oak, staff):
+    request = add_request(db, oak, needs_review=True)
+
+    body = patch_request(
+        client,
+        request,
+        status="scheduled",
+        scheduled_at="2026-11-05T09:00:00-05:00",
+        needs_review=False,
+    ).json()
+
+    assert sorted(changes_of(body)) == [
+        ("needs_review", "true", "false", "Sam Lee"),
+        ("scheduled_at", None, "2026-11-05T14:00:00+00:00", "Sam Lee"),
+        ("status", "new", "scheduled", "Sam Lee"),
+    ]
+
+
+def test_patch_writes_nothing_for_unchanged_fields(db, client, oak, staff):
+    vendor = add_assignee(db)
+    request = add_request(db, oak, assignee_id=vendor.id, scheduled_at=NOW)
+
+    body = patch_request(
+        client,
+        request,
+        status="done",
+        assignee_id=vendor.id,
+        scheduled_at=NOW.astimezone(timezone(timedelta(hours=-5))).isoformat(),
+    ).json()
+
+    assert changes_of(body) == [("status", "new", "done", "Sam Lee")]
+    assert len(patch_request(client, request, status="done").json()["history"]) == 1
+
+
+def test_automatic_move_to_scheduled_is_in_the_history(db, client, oak, staff):
+    vendor = add_assignee(db)
+    in_house = add_assignee(db, "In-house maintenance", AssigneeKind.in_house)
+    request = add_request(db, oak, status=RequestStatus.waiting_on_vendor, assignee_id=vendor.id)
+
+    body = patch_request(client, request, assignee_id=in_house.id).json()
+
+    assert sorted(changes_of(body)) == [
+        ("assignee", "Plumber", "In-house maintenance", "Sam Lee"),
+        ("status", "waiting_on_vendor", "scheduled", "Sam Lee"),
+    ]
+
+
+def test_assignee_history_keeps_the_name_at_the_time(db, client, oak, staff):
+    vendor = add_assignee(db)
+    request = add_request(db, oak)
+    patch_request(client, request, assignee_id=vendor.id)
+
+    client.patch(f"{ASSIGNEES}/{vendor.id}", json={"name": "Pipes Inc"})
+
+    body = client.get(f"{REQUESTS}/{request.id}").json()
+    assert changes_of(body) == [("assignee", None, "Plumber", "Sam Lee")]
+    assert patch_request(client, request, assignee_id=None).status_code == 200
+    body = client.get(f"{REQUESTS}/{request.id}").json()
+    assert changes_of(body)[-1] == ("assignee", "Pipes Inc", None, "Sam Lee")
+
+
+def test_refused_patches_write_no_history(db, client, oak, staff):
+    request = add_request(db, oak)
+    seen = client.get(f"{REQUESTS}/{request.id}").json()["updated_at"]
+    patch_request(client, request, status="done")
+
+    url = f"{REQUESTS}/{request.id}"
+    stale = client.patch(url, json={"updated_at": seen, "status": "scheduled"})
+    invalid = patch_request(client, request, status="waiting_on_vendor")
+
+    assert (stale.status_code, invalid.status_code) == (409, 422)
+    assert changes_of(client.get(url).json()) == [("status", "new", "done", "Sam Lee")]
+
+
+# T70
+
+
+def test_note_is_logged_without_its_text(db, client, oak, staff):
+    request = add_request(db, oak)
+
+    client.post(f"{REQUESTS}/{request.id}/notes", json={"body": "Gate code 4412"})
+
+    event = stored_events(db)[0]
+    assert (event.entity_id, event.actor_id, event.event) == (
+        request.id,
+        staff.id,
+        HistoryEventType.note_added,
+    )
+    assert (event.field, event.old_value, event.new_value) == (None, None, None)
+    history = client.get(f"{REQUESTS}/{request.id}").json()["history"]
+    assert "4412" not in json.dumps(history)
+
+
+def test_vendor_add_rename_and_deactivate_are_logged(db, client, staff):
+    vendor = client.post(ASSIGNEES, json={"name": "Drain Co"}).json()
+    url = f"{ASSIGNEES}/{vendor['id']}"
+    client.patch(url, json={"name": "Pipes Inc"})
+    client.patch(url, json={"active": False})
+
+    events = stored_events(db, HistoryEntity.assignee)
+    assert [(e.event, e.field, e.old_value, e.new_value) for e in events] == [
+        (HistoryEventType.created, "name", None, "Drain Co"),
+        (HistoryEventType.changed, "name", "Drain Co", "Pipes Inc"),
+        (HistoryEventType.changed, "active", "true", "false"),
+    ]
+    assert {(e.entity_id, e.actor_id) for e in events} == {(vendor["id"], staff.id)}
+
+
+def test_vendor_patch_that_changes_nothing_logs_nothing(db, client, staff):
+    vendor = add_assignee(db)
+
+    response = client.patch(f"{ASSIGNEES}/{vendor.id}", json={"name": "Plumber", "active": True})
+
+    assert response.status_code == 200
+    assert stored_events(db, HistoryEntity.assignee) == []
+
+
+def test_refused_vendor_changes_log_nothing(db, client, staff):
+    add_assignee(db, "Plumber")
+    other = add_assignee(db, "Electrician")
+    in_house = add_assignee(db, "In-house maintenance", AssigneeKind.in_house)
+    db.commit()  # the route's rollback would otherwise undo these rows too
+
+    assert client.post(ASSIGNEES, json={"name": "Plumber"}).status_code == 409
+    assert client.patch(f"{ASSIGNEES}/{other.id}", json={"name": "Plumber"}).status_code == 409
+    assert client.patch(f"{ASSIGNEES}/{in_house.id}", json={"active": False}).status_code == 422
+    assert stored_events(db, HistoryEntity.assignee) == []
+
+
+# T71
+
+
+def test_actor_comes_from_the_token_not_the_body(db, client, oak, staff):
+    other = StaffUser(name="Forged Name", email="forged@example.com", auth_id=uuid4())
+    db.add(other)
+    db.flush()
+    fake = {"actor": other.name, "actor_id": other.id, "actor_name": other.name}
+    request = add_request(db, oak)
+
+    logged = client.post(REQUESTS, json=staff_request(oak, **fake))
+    patched = patch_request(client, request, status="done", **fake)
+    client.post(f"{REQUESTS}/{request.id}/notes", json={"body": "Hello", **fake})
+    vendor = client.post(ASSIGNEES, json={"name": "Drain Co", **fake}).json()
+    client.patch(f"{ASSIGNEES}/{vendor['id']}", json={"name": "Pipes Inc", **fake})
+
+    assert logged.status_code == 201
+    assert patched.status_code == 200
+    events = stored_events(db) + stored_events(db, HistoryEntity.assignee)
+    assert len(events) == 5
+    assert {event.actor_id for event in events} == {staff.id}
+
+
+def test_three_changes_read_back_who_what_and_when_newest_first(db, client, oak, staff):
+    vendor = add_assignee(db)
+    logged = client.post(REQUESTS, json=staff_request(oak)).json()
+    request = db.get(MaintenanceRequest, logged["id"])
+
+    patch_request(client, request, assignee_id=vendor.id)
+    patch_request(client, request, status="waiting_on_vendor")
+    client.post(f"{REQUESTS}/{logged['id']}/notes", json={"body": "Vendor booked"})
+    patch_request(client, request, status="done")
+
+    history = client.get(f"{REQUESTS}/{logged['id']}").json()["history"]
+    assert [(e["event"], e["field"], e["old_value"], e["new_value"]) for e in history] == [
+        ("changed", "status", "waiting_on_vendor", "done"),
+        ("note_added", None, None, None),
+        ("changed", "status", "new", "waiting_on_vendor"),
+        ("changed", "assignee", None, "Plumber"),
+        ("created", "source", None, "phone"),
+    ]
+    assert {e["actor_name"] for e in history} == {"Sam Lee"}
+    assert all(datetime.fromisoformat(e["created_at"]).tzinfo for e in history)
+    assert [e["id"] for e in history] == sorted((e["id"] for e in history), reverse=True)
+
+
+def test_vendor_events_do_not_appear_on_a_request_with_the_same_id(db, client, oak, staff):
+    request = add_request(db, oak)
+    record_event(db, HistoryEntity.assignee, request.id, staff, HistoryEventType.changed, "name")
+    db.flush()
+
+    assert client.get(f"{REQUESTS}/{request.id}").json()["history"] == []

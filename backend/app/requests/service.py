@@ -11,6 +11,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.assignees.models import Assignee
+from app.audit.models import HistoryEntity, HistoryEventType
+from app.audit.service import record_event
 from app.db import MAX_ID
 from app.intake.form_config import Category
 from app.intake.models import Property, Unit
@@ -60,6 +62,7 @@ def create_request(
     category: Category,
     uploads: list[UploadFile] = [],
     source: RequestSource = RequestSource.tenant_form,
+    actor: StaffUser | None = None,
 ) -> MaintenanceRequest:
     from_tenant = source == RequestSource.tenant_form
     # First, so a retry returns its original even once the unit is at its limit.
@@ -128,6 +131,15 @@ def create_request(
         # Gets the id for the file paths. A simultaneous submit with this key waits here until the
         # first one finishes, so the loser uploads nothing.
         db.flush()
+        record_event(
+            db,
+            HistoryEntity.request,
+            request.id,
+            actor,
+            HistoryEventType.created,
+            "source",
+            new=source,
+        )
         for photo in photos:
             path = f"requests/{request.id}/{uuid4().hex}.{photo.extension}"
             # Noted first, because an upload that times out may still have landed.
@@ -170,7 +182,9 @@ def _stale() -> HTTPException:
     return HTTPException(409, "This request has changed, please reload it")
 
 
-def update_request(db: Session, request_id: int, patch: RequestPatch) -> None:
+def update_request(
+    db: Session, request_id: int, patch: RequestPatch, actor: StaffUser | None
+) -> None:
     request = _existing_request(db, request_id)
     # Before the rules, so a stale edit is told to reload, not judged against a state it never saw.
     if request.updated_at != patch.updated_at:
@@ -194,6 +208,19 @@ def update_request(db: Session, request_id: int, patch: RequestPatch) -> None:
     changes = {field: value for field, value in wanted.items() if getattr(request, field) != value}
     if not changes:
         return
+    # Read before the update below overwrites them.
+    history = {
+        field: (getattr(request, field), value)
+        for field, value in changes.items()
+        if field != "assignee_id"
+    }
+    if "assignee_id" in changes:
+        # Names, because an id would read differently after the vendor is renamed.
+        previous = db.get(Assignee, request.assignee_id) if request.assignee_id else None
+        history["assignee"] = (
+            previous.name if previous else None,
+            assignee.name if assignee else None,
+        )
     # The check is in the statement itself, so of two simultaneous edits only one can match.
     result = db.execute(
         update(MaintenanceRequest)
@@ -206,6 +233,10 @@ def update_request(db: Session, request_id: int, patch: RequestPatch) -> None:
     if result.rowcount == 0:
         db.rollback()
         raise _stale()
+    for field, (old, new) in history.items():
+        record_event(
+            db, HistoryEntity.request, request_id, actor, HistoryEventType.changed, field, old, new
+        )
     db.commit()
 
 
@@ -213,6 +244,7 @@ def add_note(db: Session, request_id: int, author: StaffUser, body: str) -> dict
     # Does not touch updated_at, so a note never makes someone else's open edit stale.
     note = Note(request_id=_existing_request(db, request_id).id, author_id=author.id, body=body)
     db.add(note)
+    record_event(db, HistoryEntity.request, note.request_id, author, HistoryEventType.note_added)
     db.commit()
     return {
         "id": note.id,

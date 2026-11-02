@@ -8,6 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.assignees.models import Assignee, AssigneeKind
+from app.audit.models import HistoryEntity, HistoryEventType
+from app.audit.service import record_event
 from app.db import MAX_ID, get_db
 from app.photos import storage
 from app.requests.models import RequestStatus
@@ -24,6 +26,7 @@ from app.requests.schemas import (
 )
 from app.requests.service import add_note, create_request, update_request
 from app.staff.auth import CurrentStaff, require_staff
+from app.staff.models import StaffUser
 
 # On the router, so a staff endpoint added later cannot forget the guard.
 router = APIRouter(prefix="/api/staff", dependencies=[Depends(require_staff)])
@@ -95,7 +98,7 @@ def get_summary(db: Db):
 
 
 @router.post("/requests", response_model=RequestDetail, status_code=201)
-def log_request(request: Request, data: StaffRequestCreate, db: Db):
+def log_request(request: Request, data: StaffRequestCreate, staff: CurrentStaff, db: Db):
     config = request.app.state.form_config
     category = next((c for c in config.categories if c.id == data.category), None)
     if category is None:
@@ -103,7 +106,7 @@ def log_request(request: Request, data: StaffRequestCreate, db: Db):
     errors = category.answer_errors(data.followup_answers)
     if errors:
         raise RequestValidationError(errors)
-    created = create_request(db, data, None, category, source=data.source)
+    created = create_request(db, data, None, category, source=data.source, actor=staff)
     return get_request_detail(db, created.id)
 
 
@@ -116,8 +119,8 @@ def get_request(request_id: int, db: Db):
 
 
 @router.patch("/requests/{request_id}", response_model=RequestDetail)
-def patch_request(request_id: int, patch: RequestPatch, db: Db):
-    update_request(db, request_id, patch)
+def patch_request(request_id: int, patch: RequestPatch, staff: CurrentStaff, db: Db):
+    update_request(db, request_id, patch, staff)
     return get_request_detail(db, request_id)
 
 
@@ -139,8 +142,18 @@ def list_assignees(db: Db):
     return db.scalars(select(Assignee).where(Assignee.active).order_by(Assignee.name)).all()
 
 
-def _save_assignee(db: Session) -> None:
+def _save_assignee(
+    db: Session,
+    assignee: Assignee,
+    actor: StaffUser | None,
+    event: HistoryEventType,
+    changes: dict[str, tuple],
+) -> None:
     try:
+        # Raises on a duplicate name, and gives a new entry the id its event needs.
+        db.flush()
+        for field, (old, new) in changes.items():
+            record_event(db, HistoryEntity.assignee, assignee.id, actor, event, field, old, new)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -148,25 +161,28 @@ def _save_assignee(db: Session) -> None:
 
 
 @router.post("/assignees", response_model=AssigneeOut, status_code=201)
-def add_assignee(data: AssigneeCreate, db: Db):
+def add_assignee(data: AssigneeCreate, staff: CurrentStaff, db: Db):
     # Always an outside vendor: the kind is not an input, so nothing can become in-house.
     assignee = Assignee(name=data.name, kind=AssigneeKind.outside_vendor)
     db.add(assignee)
-    _save_assignee(db)
+    _save_assignee(db, assignee, staff, HistoryEventType.created, {"name": (None, data.name)})
     return assignee
 
 
 @router.patch("/assignees/{assignee_id}", response_model=AssigneeOut)
-def patch_assignee(assignee_id: int, patch: AssigneePatch, db: Db):
+def patch_assignee(assignee_id: int, patch: AssigneePatch, staff: CurrentStaff, db: Db):
     assignee = db.get(Assignee, assignee_id) if abs(assignee_id) <= MAX_ID else None
     if assignee is None:
         raise HTTPException(404, "Assignee not found")
     if assignee.kind == AssigneeKind.in_house and patch.active is False:
         error = {"loc": ("body", "active"), "msg": "In-house maintenance cannot be deactivated"}
         raise RequestValidationError([error])
-    if patch.name is not None:
-        assignee.name = patch.name
-    if patch.active is not None:
-        assignee.active = patch.active
-    _save_assignee(db)
+    changes = {
+        field: (getattr(assignee, field), value)
+        for field, value in (("name", patch.name), ("active", patch.active))
+        if value is not None and getattr(assignee, field) != value
+    }
+    for field, (_, value) in changes.items():
+        setattr(assignee, field, value)
+    _save_assignee(db, assignee, staff, HistoryEventType.changed, changes)
     return assignee

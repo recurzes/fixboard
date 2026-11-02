@@ -9,6 +9,7 @@ from PIL import ExifTags, Image
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import OperationalError
 
+from app.audit.models import HistoryEvent
 from app.db import get_db
 from app.intake.models import Property, Unit
 from app.intake.routes import limiter
@@ -122,6 +123,7 @@ def count(db, model) -> int:
 def assert_nothing_saved(db, bucket) -> None:
     assert count(db, MaintenanceRequest) == 0
     assert count(db, Photo) == 0
+    assert count(db, HistoryEvent) == 0
     assert bucket.files == {}
 
 
