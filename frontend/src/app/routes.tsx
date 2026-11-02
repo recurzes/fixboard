@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import type { RouteObject } from "react-router";
 import { AuthProvider } from "../features/staff/auth/AuthProvider";
 import { LoginPage } from "../features/staff/auth/LoginPage";
@@ -7,6 +6,7 @@ import {
   ResetPasswordPage,
 } from "../features/staff/auth/PasswordPages";
 import { RequireStaff } from "../features/staff/auth/RequireStaff";
+import { TenantFormPage } from "../features/tenant-form/TenantFormPage";
 import { ErrorScreen } from "../shared/ui/ErrorScreen";
 import { DemoCrash, UiDemo } from "./UiDemo";
 
@@ -14,17 +14,10 @@ const StaffPlaceholder = ({ title }: { title: string }) => (
   <h1 className="text-2xl font-bold">{title}</h1>
 );
 
-function Placeholder({
-  title,
-  children,
-}: {
-  title: string;
-  children?: ReactNode;
-}) {
+function Placeholder({ title }: { title: string }) {
   return (
     <main className="mx-auto max-w-lg p-4">
       <h1 className="mb-4 text-2xl font-bold">{title}</h1>
-      {children}
     </main>
   );
 }
@@ -34,19 +27,7 @@ export const routes: RouteObject[] = [
     // The router catches render errors itself, so its boundary is the one that shows.
     errorElement: <ErrorScreen />,
     children: [
-      {
-        path: "/",
-        element: (
-          <Placeholder title="Tenant form">
-            <button
-              type="button"
-              className="min-h-11 w-full rounded-lg bg-blue-700 px-4 font-semibold text-white"
-            >
-              Test button
-            </button>
-          </Placeholder>
-        ),
-      },
+      { path: "/", element: <TenantFormPage /> },
       { path: "/done", element: <Placeholder title="Request received" /> },
       {
         element: <AuthProvider />,

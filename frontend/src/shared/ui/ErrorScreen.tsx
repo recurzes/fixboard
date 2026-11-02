@@ -1,6 +1,17 @@
 import { siteConfig } from "../lib/siteConfig";
 import { Alert } from "./Feedback";
 
+export function EmergencyLink() {
+  return (
+    <a
+      href={`tel:${siteConfig.emergencyNumber.replace(/\D/g, "")}`}
+      className="font-semibold whitespace-nowrap underline"
+    >
+      {siteConfig.emergencyNumber}
+    </a>
+  );
+}
+
 // A backend 500 has no CORS header and looks like an outage, so this wording covers both.
 export function ErrorScreen() {
   return (
@@ -11,14 +22,7 @@ export function ErrorScreen() {
         try again in a few minutes.
       </p>
       <Alert variant="warning">
-        If this is an emergency or you need help now, call{" "}
-        <a
-          href={`tel:${siteConfig.emergencyNumber.replace(/\D/g, "")}`}
-          className="font-semibold whitespace-nowrap underline"
-        >
-          {siteConfig.emergencyNumber}
-        </a>
-        .
+        If this is an emergency or you need help now, call <EmergencyLink />.
       </Alert>
     </main>
   );
