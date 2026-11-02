@@ -80,6 +80,7 @@ def test_500_uses_error_shape_and_hides_details():
 
 def test_request_logs_are_json_with_request_id_and_no_query_string(capsys):
     client = make_client()
+    capsys.readouterr()  # drops the startup warning about the placeholder emergency number
     client.get("/health?q=secret-tenant-name")
     client.get("/boom")
 

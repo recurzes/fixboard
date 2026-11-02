@@ -34,6 +34,9 @@ class FakeBucket:
         self.uploads = 0
         self.fail_deletes = False
 
+    def head_bucket(self, Bucket):
+        assert Bucket == settings.storage_bucket
+
     def put_object(self, Bucket, Key, Body, ContentType):
         assert Bucket == settings.storage_bucket
         if self.fail_uploads_after is not None and self.uploads >= self.fail_uploads_after:

@@ -43,6 +43,7 @@ REAL_CLIENT = storage._client
 # Everything a logged-out caller may reach. Adding to this list needs a privacy decision.
 PUBLIC_ROUTES = {
     ("GET", "/health"),
+    ("GET", "/health/ready"),
     ("GET", "/api/public/config"),
     ("GET", "/api/public/properties"),
     ("GET", "/api/public/properties/{property_id}/units"),

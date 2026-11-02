@@ -4,9 +4,9 @@ A maintenance request tool for a rental company of about 75 units. Tenants submi
 
 ## Status
 
-Backend only, and still in progress:
+The backend is finished and ready to deploy, but has not run in production yet. To deploy or operate it, see the [runbook](RUNBOOK.md).
 
-- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list, an append-only history of who changed what, and privacy hardening.
+- **Built:** properties, units, the resident roster, the vendor list, staff sign-in, public request intake with photos, follow-up questions, self-checks, urgent answers, the staff API for listing, searching, opening, changing, and logging requests, adding notes, and editing the vendor list, an append-only history of who changed what, privacy hardening, readiness checks, a smoke test, and demo data.
 - **Not built yet:** the frontend.
 
 ## Stack
@@ -56,11 +56,10 @@ Check it at <http://localhost:8000/health>.
 
 **Check `DATABASE_URL` before running migrations or seed scripts.** They change whichever database it points to, so if `backend/.env` holds your Neon URL, they run against Neon.
 
-To run the backend in Docker instead, set `APP_ORIGIN`, `NEON_AUTH_URL`, and the `STORAGE_*` values in your shell, because the container does not read `backend/.env`. Compose does not run migrations, so run them yourself:
+To run the backend in Docker instead, set `APP_ORIGIN`, `NEON_AUTH_URL`, and the `STORAGE_*` values in your shell, because the container does not read `backend/.env`. The container runs migrations when it starts:
 
 ```sh
 docker compose up -d --build
-docker compose exec backend alembic upgrade head
 ```
 
 ## Load data
@@ -92,6 +91,16 @@ The roster is personal data. Git and Docker builds ignore `*.csv` files, so keep
 
 The staff script also needs `NEON_API_KEY`, `NEON_PROJECT_ID`, and `NEON_BRANCH_ID`. Neon's API takes no password, so new staff set theirs through the forgot-password flow.
 
+## Demo data
+
+To see a realistic list without a roster or a bucket:
+
+```sh
+uv run python -m app.demo_seed
+```
+
+This adds two `Demo - ...` properties, made-up residents, the vendor list, and seven requests in every status, including an urgent one and a contact mismatch. It leaves the real roster alone, and stops if it is already loaded. Tenants would see these properties on the form, so the [runbook](RUNBOOK.md#demo-data) shows how to remove them.
+
 ## Check for orphan photos
 
 This lists files in the bucket with no database row. Run it weekly. It only reports and deletes nothing, because a submit still in progress can look like an orphan.
@@ -106,6 +115,7 @@ Settings come from environment variables or `backend/.env`. See `backend/.env.ex
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
+| `ENVIRONMENT` | No | `local` | `production` also requires `SENTRY_DSN`, and the app will not start without it |
 | `DATABASE_URL` | Yes | | Postgres URL using the psycopg driver. On Neon, use the direct host, not `-pooler` |
 | `APP_ORIGIN` | Yes | | The frontend's exact origin, such as `https://app.example.com`, and the only one CORS allows. A wildcard, a list, or a trailing slash stops the app from starting |
 | `NEON_AUTH_URL` | Yes | | Base URL of Neon Auth |
@@ -113,7 +123,7 @@ Settings come from environment variables or `backend/.env`. See `backend/.env.ex
 | `STORAGE_ENDPOINT_URL`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | Yes | | The S3-compatible photo bucket. It must be private, and the secret key stays on the server |
 | `STORAGE_REGION` | No | `auto` | Region of the photo bucket |
 | `SIGNED_URL_SECONDS` | No | `300` | How long a staff photo link works |
-| `SENTRY_DSN` | No | off | Error reporting |
+| `SENTRY_DSN` | In production | off | Error reporting |
 | `PUBLIC_FORM_ENABLED` | No | `true` | `false` closes the public form |
 | `RATE_LIMIT_IP` | No | `10/minute` | Limit per IP on the public form |
 | `RATE_LIMIT_UNIT_PER_HOUR` | No | `10` | Limit per unit on the public form |
@@ -122,14 +132,15 @@ Everything the form asks lives in `backend/app/intake/form_config.json`, and the
 
 - **Categories and questions:** 2 to 4 questions per category.
 - **Option flags:** `urgent`, and `self_check` on the answers allowed to have one. Self-check wording is a draft until the client approves it, marked `pending_client_approval`.
-- **`emergency_number`:** still the placeholder `(000) 000-0000`. Replace it before real tenants use the form.
+- **`emergency_number`:** still the placeholder `(000) 000-0000`. The app logs a loud warning at every start until it changes, and still starts. Replace it before real tenants use the form.
 - **`require_emergency_ack`:** `false` removes the "not an emergency" requirement.
 
 ## API
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
-| GET | `/health` | Public | Liveness check |
+| GET | `/health` | Public | Liveness check, which touches nothing else |
+| GET | `/health/ready` | Public, rate limited | Checks the database and photo storage. Returns 503 with no details if either fails |
 | GET | `/api/public/config` | Public | Categories, follow-up questions, self-checks, urgent answers, emergency number |
 | GET | `/api/public/properties` | Public | Active properties |
 | GET | `/api/public/properties/{id}/units` | Public | Active units of a property |
@@ -228,3 +239,36 @@ uv run pytest
 ```
 
 They use the local database even if `backend/.env` points at Neon, and a fake bucket in place of real storage. A `DATABASE_URL` set in your shell takes priority, though, so unset it first: the tests run migrations on that database.
+
+`tests/smoke.py` is separate: it runs against a live backend and writes real data. See the [runbook](RUNBOOK.md#smoke-test).
+
+## Assumptions the client must confirm
+
+These are still open, and the build uses the stated behavior until the client answers. A3 and A9 matter most, because contact matching needs the roster and self-checks need approved wording.
+
+| ID | Assumption | What happens now |
+| --- | --- | --- |
+| A2 | At least one of phone or email is required | Matching uses either, and phone numbers are stored in one US format |
+| A3 | The client supplies a resident roster (unit, name, email, phone) as a CSV | Loaded by script and refreshed by re-running it, with no admin page in V1. Until then, every tenant request is flagged for review |
+| A4 | A request matches when its email or phone equals an active resident of that unit | No match, or no residents on file, flags the request for review, and it is accepted either way |
+| A6 | "No AC above 90°F" means the tenant says the unit is above 90°F | The form asks, with no weather lookup |
+| A7 | The US state is unknown | The entry-notice text, privacy notice, and company time zone depend on it. **The backend has no settings for these yet** |
+| A8 | Requests and photos are kept 2 years | Nothing is purged in V1, and **no retention setting exists yet** |
+| A9 | Self-check wording is a conservative draft | Marked `pending_client_approval`, and the client signs off on each. **The spec expects one for electrical, clogged drains, and AC/heating, but the form config has none for AC/heating yet** |
+| A14 | Unit numbers are visible in the public dropdown | The alternative is a typed unit field |
+| A15 | Photos: up to 5, JPG, PNG, or HEIC, no video | EXIF is removed on the server. Resizing in the browser waits for the frontend |
+| A17 | About 75 to 150 requests a month | Check the chosen photo storage provider's limits before launch, and plan for a paid tier |
+| A18 | English only, and notes are internal only | Changes to a request go through staff |
+
+Two more things the client must provide:
+
+- **The real emergency number,** to replace `(000) 000-0000` before real tenants use the form.
+- **Who checks the dashboard, and how often.** V1 sends no notifications, so a request nobody looks at goes unseen.
+
+## Next steps: notifications
+
+V1 sends no notifications, so staff find new requests only by opening the dashboard. This is the first thing to add:
+
+- **Email:** tell staff about each new request, and send the tenant a confirmation with the reference number.
+- **SMS:** alert the on-call person about urgent requests right away.
+- **Chat:** post new requests to a staff channel, such as Slack or Teams.

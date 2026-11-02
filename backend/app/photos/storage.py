@@ -31,6 +31,10 @@ def _client():
     )
 
 
+def check_bucket() -> None:
+    _client().head_bucket(Bucket=settings.storage_bucket)
+
+
 def upload(path: str, content: bytes, content_type: str) -> None:
     _client().put_object(
         Bucket=settings.storage_bucket, Key=path, Body=content, ContentType=content_type
