@@ -19,6 +19,8 @@ export type FormFields = {
   self_check_shown: string;
   self_check_tried: boolean;
   not_an_emergency: boolean;
+  // The honeypot: hidden in the form, so only bots fill it.
+  website: string;
 };
 
 export type FormState = { step: number; fields: FormFields };
@@ -32,6 +34,7 @@ export type FormAction =
       };
     }[keyof FormFields]
   | { type: "answer"; category: Category; question: string; value: string }
+  | { type: "goto"; step: number }
   | { type: "next" | "back" | "reset" };
 
 export const initialFormState: FormState = {
@@ -50,6 +53,7 @@ export const initialFormState: FormState = {
     self_check_shown: "",
     self_check_tried: false,
     not_an_emergency: false,
+    website: "",
   },
 };
 
@@ -97,6 +101,8 @@ export function formReducer(state: FormState, action: FormAction): FormState {
       return { ...state, step: Math.min(state.step + 1, LAST_STEP) };
     case "back":
       return { ...state, step: Math.max(state.step - 1, 1) };
+    case "goto":
+      return { ...state, step: action.step };
     case "reset":
       return initialFormState;
   }

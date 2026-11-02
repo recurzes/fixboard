@@ -152,7 +152,7 @@ Everything the form asks lives in `backend/app/intake/form_config.json`, and the
 | --- | --- | --- | --- |
 | GET | `/health` | Public | Liveness check, which touches nothing else |
 | GET | `/health/ready` | Public, rate limited | Checks the database and photo storage. Returns 503 with no details if either fails |
-| GET | `/api/public/config` | Public | Categories, follow-up questions, self-checks, urgent answers, emergency number |
+| GET | `/api/public/config` | Public | Categories, follow-up questions, self-checks, urgent answers, emergency number, and `form_enabled` |
 | GET | `/api/public/properties` | Public | Active properties |
 | GET | `/api/public/properties/{id}/units` | Public | Active units of a property |
 | POST | `/api/public/requests` | Public, rate limited | Submit a request with up to 5 photos, returns only the reference number |

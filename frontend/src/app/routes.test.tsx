@@ -12,7 +12,7 @@ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
 it.each([
   ["/", "Report a maintenance problem"],
-  ["/done", "Request received"],
+  ["/done", "Thank you"],
   ["/staff/login", "Staff sign in"],
   ["/staff", "Staff sign in"],
   ["/staff/requests/1", "Staff sign in"],

@@ -6,6 +6,7 @@ import {
   ResetPasswordPage,
 } from "../features/staff/auth/PasswordPages";
 import { RequireStaff } from "../features/staff/auth/RequireStaff";
+import { ConfirmationPage } from "../features/tenant-form/ConfirmationPage";
 import { TenantFormPage } from "../features/tenant-form/TenantFormPage";
 import { ErrorScreen } from "../shared/ui/ErrorScreen";
 import { DemoCrash, UiDemo } from "./UiDemo";
@@ -28,7 +29,7 @@ export const routes: RouteObject[] = [
     errorElement: <ErrorScreen />,
     children: [
       { path: "/", element: <TenantFormPage /> },
-      { path: "/done", element: <Placeholder title="Request received" /> },
+      { path: "/done", element: <ConfirmationPage /> },
       {
         element: <AuthProvider />,
         children: [

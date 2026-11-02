@@ -460,7 +460,13 @@ def test_kill_switch_reports_closed_before_validating(client, monkeypatch):
 
 def test_kill_switch_leaves_the_read_routes_open(client, monkeypatch):
     monkeypatch.setattr(settings, "public_form_enabled", False)
-    assert client.get("/api/public/config").status_code == 200
+    response = client.get("/api/public/config")
+    assert response.status_code == 200
+    assert response.json()["form_enabled"] is False
+
+
+def test_public_config_says_the_form_is_open_by_default(client):
+    assert client.get("/api/public/config").json()["form_enabled"] is True
 
 
 # T34
