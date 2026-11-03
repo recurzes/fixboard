@@ -2,6 +2,8 @@
 
 A maintenance request tool for a rental company of about 75 units. Tenants submit requests through a public form with no login, and staff work through them on one dashboard, so nothing gets lost.
 
+For the owner: assumptions, open questions, how AI was used, and known issues are in [CLIENT_README.md](CLIENT_README.md).
+
 ## Status
 
 The backend is finished and ready to deploy, but has not run in production yet. To deploy or operate it, see the [runbook](RUNBOOK.md).
